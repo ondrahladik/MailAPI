@@ -92,12 +92,32 @@ CREATE TABLE api_rate_limits (
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE email_templates (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    application_id BIGINT UNSIGNED NOT NULL,
+    slug VARCHAR(80) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    subject_template VARCHAR(255) NOT NULL,
+    body_template MEDIUMTEXT NOT NULL,
+    format ENUM('text', 'html') NOT NULL DEFAULT 'text',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_email_templates_application_slug (application_id, slug),
+    KEY ix_email_templates_application_active (application_id, is_active),
+    CONSTRAINT fk_email_templates_application
+        FOREIGN KEY (application_id) REFERENCES applications (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE email_logs (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     smtp_server_id BIGINT UNSIGNED NULL,
     sender_id BIGINT UNSIGNED NULL,
     application_id BIGINT UNSIGNED NOT NULL,
     token_id BIGINT UNSIGNED NULL,
+    template_id BIGINT UNSIGNED NULL,
     recipient VARCHAR(254) NOT NULL,
     sender VARCHAR(254) NOT NULL,
     subject VARCHAR(255) NOT NULL,
@@ -110,6 +130,7 @@ CREATE TABLE email_logs (
     PRIMARY KEY (id),
     KEY ix_email_logs_smtp_server (smtp_server_id),
     KEY ix_email_logs_sender (sender_id),
+    KEY ix_email_logs_template (template_id),
     KEY ix_email_logs_application_created (application_id, created_at),
     KEY ix_email_logs_created (created_at),
     CONSTRAINT fk_email_logs_smtp_server
@@ -123,6 +144,9 @@ CREATE TABLE email_logs (
         ON DELETE RESTRICT,
     CONSTRAINT fk_email_logs_token
         FOREIGN KEY (token_id) REFERENCES api_tokens (id)
+        ON DELETE SET NULL,
+    CONSTRAINT fk_email_logs_template
+        FOREIGN KEY (template_id) REFERENCES email_templates (id)
         ON DELETE SET NULL
 ) ENGINE=InnoDB;
 

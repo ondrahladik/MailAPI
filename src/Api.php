@@ -31,11 +31,50 @@ final class Api
         $this->checkRateLimit($pdo, (int) $application['token_id']);
         $data = Http::requestJson();
         $recipient = $this->emailField($data['to'] ?? $application['default_to'] ?? null, 'to', 254, true);
-        $subject = $this->stringField($data['subject'] ?? null, 'subject', 1, 255);
-        $body = $this->stringField($data['body'] ?? null, 'body', 1, 50000);
-        $format = $data['format'] ?? 'text';
-        if (!is_string($format) || !in_array($format, ['text', 'html'], true)) {
-            Http::jsonError(422, 'validation_error', 'The format field must be text or html.');
+        $templateId = null;
+        if (array_key_exists('template', $data)) {
+            if (array_key_exists('subject', $data) || array_key_exists('body', $data) || array_key_exists('format', $data)) {
+                Http::jsonError(422, 'validation_error', 'Template requests must omit subject, body, and format.');
+            }
+            if (array_key_exists('variables', $data) === false) {
+                $data['variables'] = [];
+            }
+            $templateSlug = $this->stringField($data['template'], 'template', 1, 80);
+            if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,79}$/', $templateSlug)) {
+                Http::jsonError(422, 'validation_error', 'The template field must be a valid template slug.');
+            }
+            $templateQuery = $pdo->prepare(
+                'SELECT id, subject_template, body_template, format
+                 FROM email_templates
+                 WHERE application_id = ? AND slug = ? AND is_active = 1
+                 LIMIT 1'
+            );
+            $templateQuery->execute([(int) $application['application_id'], $templateSlug]);
+            $template = $templateQuery->fetch();
+            if (!$template) {
+                Http::jsonError(404, 'template_not_found', 'The active template was not found for this application.');
+            }
+            $templateId = (int) $template['id'];
+            $format = $template['format'];
+            $variables = $this->templateVariables($data['variables']);
+            $subject = $this->renderTemplate($template['subject_template'], $variables, 'subject', 255);
+            $body = $this->renderTemplate(
+                $template['body_template'],
+                $variables,
+                'body',
+                50000,
+                $format === 'html'
+            );
+        } else {
+            if (array_key_exists('variables', $data)) {
+                Http::jsonError(422, 'validation_error', 'The variables field can only be used with a template.');
+            }
+            $subject = $this->stringField($data['subject'] ?? null, 'subject', 1, 255);
+            $body = $this->stringField($data['body'] ?? null, 'body', 1, 50000);
+            $format = $data['format'] ?? 'text';
+            if (!is_string($format) || !in_array($format, ['text', 'html'], true)) {
+                Http::jsonError(422, 'validation_error', 'The format field must be text or html.');
+            }
         }
 
         $explicitSender = array_key_exists('from', $data);
@@ -87,14 +126,15 @@ final class Api
 
         $insert = $pdo->prepare(
             'INSERT INTO email_logs
-                (smtp_server_id, sender_id, application_id, token_id, recipient, sender, subject, format, status, ip_address)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, "pending", ?)'
+                (smtp_server_id, sender_id, application_id, token_id, template_id, recipient, sender, subject, format, status, ip_address)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "pending", ?)'
         );
         $insert->execute([
             $application['smtp_server_id'],
             $sender['sender_id'],
             $application['application_id'],
             $application['token_id'],
+            $templateId,
             $recipient,
             $sender['email'],
             $subject,
@@ -187,5 +227,54 @@ final class Api
             Http::jsonError(422, 'validation_error', 'The subject must not contain line breaks.');
         }
         return $value;
+    }
+
+    private function templateVariables(mixed $value): array
+    {
+        if (!is_array($value) || count($value) > 100) {
+            Http::jsonError(422, 'validation_error', 'The variables field must be an object with no more than 100 values.');
+        }
+        $variables = [];
+        foreach ($value as $name => $item) {
+            if (!is_string($name) || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $name)) {
+                Http::jsonError(422, 'validation_error', 'Template variable names must use letters, numbers, and underscores.');
+            }
+            if (!is_string($item) && !is_int($item) && !is_float($item) && !is_bool($item)) {
+                Http::jsonError(422, 'validation_error', "Template variable {$name} must be a string, number, or boolean.");
+            }
+            $text = is_bool($item) ? ($item ? 'true' : 'false') : (string) $item;
+            if (strlen($text) > 10000) {
+                Http::jsonError(422, 'validation_error', "Template variable {$name} exceeds 10000 characters.");
+            }
+            $variables[$name] = $text;
+        }
+        return $variables;
+    }
+
+    private function renderTemplate(
+        string $template,
+        array $variables,
+        string $field,
+        int $maxLength,
+        bool $escapeHtml = false
+    ): string
+    {
+        preg_match_all('/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/', $template, $matches);
+        foreach ($matches[1] as $name) {
+            if (!array_key_exists($name, $variables)) {
+                Http::jsonError(422, 'validation_error', "Template variable {$name} is required.");
+            }
+        }
+        $rendered = preg_replace_callback(
+            '/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/',
+            static fn(array $match): string => $escapeHtml
+                ? htmlspecialchars($variables[$match[1]], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : $variables[$match[1]],
+            $template
+        );
+        if (!is_string($rendered)) {
+            Http::jsonError(500, 'internal_error', 'The email template could not be rendered.');
+        }
+        return $this->stringField($rendered, $field, 1, $maxLength);
     }
 }

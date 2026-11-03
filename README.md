@@ -1,6 +1,6 @@
 # Installation
 
-MailAPI is a centralized PHP and MariaDB service for sending email through configured SMTP servers. Applications use bearer tokens with the `POST /send` REST endpoint, while the admin interface manages SMTP servers, senders, applications, tokens, delivery history, and manual email.
+MailAPI is a centralized PHP and MariaDB service for sending email through configured SMTP servers. Applications use bearer tokens with the `POST /send` REST endpoint, while the admin interface manages SMTP servers, senders, applications, tokens, reusable email templates, searchable delivery history, and manual email.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ MailAPI is a centralized PHP and MariaDB service for sending email through confi
    composer install --no-dev --optimize-autoloader
    ```
 
-3. Create the database tables by importing [database/schema.sql](./database/schema.sql) into MariaDB. The script creates the application schema; it does not create a database user or grant permissions. Give the application only the database access it needs. This schema is for new installations; do not import it over an existing database. Existing installations require a separate migration before deploying this version.
+3. Create the database tables by importing [database/schema.sql](./database/schema.sql) into MariaDB. This file contains the complete application schema, including email templates; it does not create a database user or grant permissions. Give the application only the database access it needs. Import it only for a new installation; do not import it over an existing database.
 4. Run the configuration generator from the command line:
 
    ```sh

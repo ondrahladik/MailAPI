@@ -86,6 +86,7 @@ final class Admin
             '/admin/tokens',
             '/admin/send-email',
             '/admin/email-history',
+            '/admin/templates',
             '/admin/docs',
             '/admin/docs/admin',
         ];
@@ -162,6 +163,7 @@ final class Admin
             '/admin/tokens' => 'API tokens',
             '/admin/send-email' => 'Send email',
             '/admin/email-history' => 'Email history',
+            '/admin/templates' => 'Email templates',
             '/admin/docs' => 'API documentation',
             '/admin/docs/admin' => 'Admin guide',
             default => 'Overview',
@@ -185,6 +187,9 @@ final class Admin
                 break;
             case '/admin/email-history':
                 $content .= $this->emailHistoryContent($pdo);
+                break;
+            case '/admin/templates':
+                $content .= $this->emailTemplatesContent($pdo);
                 break;
             case '/admin/docs':
                 $content .= $this->docsContent();
@@ -486,16 +491,178 @@ final class Admin
 
     private function emailHistoryContent(PDO $pdo): string
     {
-        $logs = $pdo->query(
-            'SELECT l.*, a.name AS application_name, smtp.name AS smtp_server_name
-             FROM email_logs l
-             JOIN applications a ON a.id = l.application_id
-             LEFT JOIN smtp_servers smtp ON smtp.id = l.smtp_server_id
-             ORDER BY l.created_at DESC LIMIT 100'
+        $filters = [];
+        $parameters = [];
+        $notice = '';
+        $search = $_GET['q'] ?? '';
+        if (!is_string($search)) {
+            $search = '';
+            $notice = $this->toast('error', 'Invalid search', 'The search value must be text.');
+        } elseif (strlen($search) > 150) {
+            $search = substr($search, 0, 150);
+            $notice = $this->toast('error', 'Search shortened', 'Search text is limited to 150 characters.');
+        }
+        $search = trim($search);
+        if ($search !== '') {
+            $filters[] = '(l.recipient LIKE ? OR l.sender LIKE ? OR l.subject LIKE ? OR template.slug LIKE ?)';
+            $searchLike = '%' . $search . '%';
+            array_push($parameters, $searchLike, $searchLike, $searchLike, $searchLike);
+        }
+
+        $applicationId = null;
+        $rawApplicationId = $_GET['application_id'] ?? '';
+        if ($rawApplicationId !== '') {
+            if (is_string($rawApplicationId) && ctype_digit($rawApplicationId) && (int) $rawApplicationId > 0) {
+                $applicationId = (int) $rawApplicationId;
+                $filters[] = 'l.application_id = ?';
+                $parameters[] = $applicationId;
+            } else {
+                $notice .= $this->toast('error', 'Invalid application filter', 'Choose a valid application.');
+            }
+        }
+        $status = $_GET['status'] ?? '';
+        if (!is_string($status) || ($status !== '' && !in_array($status, ['pending', 'sent', 'failed'], true))) {
+            $status = '';
+            $notice .= $this->toast('error', 'Invalid status filter', 'Choose pending, sent, or failed.');
+        }
+        if ($status !== '') {
+            $filters[] = 'l.status = ?';
+            $parameters[] = $status;
+        }
+        $where = $filters ? ' WHERE ' . implode(' AND ', $filters) : '';
+        $joins = ' FROM email_logs l
+                   JOIN applications a ON a.id = l.application_id
+                   LEFT JOIN smtp_servers smtp ON smtp.id = l.smtp_server_id
+                   LEFT JOIN email_templates template ON template.id = l.template_id';
+
+        $countQuery = $pdo->prepare('SELECT COUNT(*)' . $joins . $where);
+        $countQuery->execute($parameters);
+        $total = (int) $countQuery->fetchColumn();
+        $perPage = 25;
+        $totalPages = max(1, (int) ceil($total / $perPage));
+        $page = 1;
+        $rawPage = $_GET['page'] ?? '1';
+        if (is_string($rawPage) && ctype_digit($rawPage) && (int) $rawPage > 0) {
+            $page = min((int) $rawPage, $totalPages);
+        } elseif ($rawPage !== '1') {
+            $notice .= $this->toast('error', 'Invalid page', 'The requested page number is invalid.');
+        }
+        $offset = ($page - 1) * $perPage;
+        $logsQuery = $pdo->prepare(
+            'SELECT l.*, a.name AS application_name, smtp.name AS smtp_server_name,
+                    template.slug AS template_slug'
+            . $joins . $where . " ORDER BY l.created_at DESC, l.id DESC LIMIT {$perPage} OFFSET {$offset}"
+        );
+        $logsQuery->execute($parameters);
+        $logs = $logsQuery->fetchAll();
+        $applications = $pdo->query('SELECT id, name FROM applications ORDER BY name')->fetchAll();
+
+        $content = '<section class="content-section"><div class="section-heading"><div><h2>Email history</h2>'
+            . '<p>Search delivery attempts by sender, recipient, subject, or template. Message bodies are not stored.</p></div></div>'
+            . $notice . '<form method="get" action="/admin/email-history" class="form-grid history-filters">'
+            . '<label>Search <input name="q" maxlength="150" value="' . Http::escape($search) . '" placeholder="Email, subject, or template"></label>'
+            . '<label>Application <select name="application_id"><option value="">All applications</option>';
+        foreach ($applications as $application) {
+            $selected = $applicationId === (int) $application['id'] ? ' selected' : '';
+            $content .= '<option value="' . (int) $application['id'] . '"' . $selected . '>'
+                . Http::escape($application['name']) . '</option>';
+        }
+        $content .= '</select></label><label>Status <select name="status"><option value="">All statuses</option>';
+        foreach (['pending', 'sent', 'failed'] as $option) {
+            $selected = $status === $option ? ' selected' : '';
+            $content .= '<option value="' . $option . '"' . $selected . '>' . ucfirst($option) . '</option>';
+        }
+        $content .= '</select></label><div class="form-actions"><button>Search</button>'
+            . '<a class="button-link" href="/admin/email-history">Clear filters</a></div></form>'
+            . '<p class="history-summary">Showing ' . ($total === 0 ? '0' : ($offset + 1) . '–' . min($offset + $perPage, $total))
+            . ' of ' . $total . ' attempts · Page ' . $page . ' of ' . $totalPages . '</p>'
+            . $this->logTable($logs, true);
+        if ($totalPages > 1) {
+            $content .= '<nav class="pagination" aria-label="Email history pages">';
+            $query = ['q' => $search, 'application_id' => $applicationId, 'status' => $status];
+            if ($page > 1) {
+                $query['page'] = $page - 1;
+                $content .= '<a href="/admin/email-history?' . Http::escape(http_build_query($query)) . '">Previous</a>';
+            }
+            if ($page < $totalPages) {
+                $query['page'] = $page + 1;
+                $content .= '<a href="/admin/email-history?' . Http::escape(http_build_query($query)) . '">Next</a>';
+            }
+            $content .= '</nav>';
+        }
+        return $content . '</section>';
+    }
+
+    private function emailTemplatesContent(PDO $pdo): string
+    {
+        $applications = $pdo->query('SELECT id, name FROM applications ORDER BY name')->fetchAll();
+        $templates = $pdo->query(
+            'SELECT template.*, application.name AS application_name
+             FROM email_templates template
+             JOIN applications application ON application.id = template.application_id
+             ORDER BY application.name, template.name'
         )->fetchAll();
-        return '<section class="content-section"><div class="section-heading"><div><h2>Email history</h2>'
-            . '<p>The 100 most recent delivery attempts. Message bodies are not stored.</p></div></div>'
-            . $this->logTable($logs, true) . '</section>';
+        $content = '<section class="content-section"><div class="section-heading"><div><h2>Email templates</h2>'
+            . '<p>Templates belong to one application and are available only to its API tokens. Use <code>{{variable}}</code> placeholders.</p></div>'
+            . '<button type="button" class="secondary" data-open-modal="template-create">Create template</button></div>'
+            . '<dialog class="admin-modal" id="template-create" aria-labelledby="template-create-title">'
+            . '<div class="modal-header"><h2 id="template-create-title">New email template</h2>'
+            . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
+            . $this->emailTemplateForm($applications) . '</dialog>';
+        if (!$templates) {
+            return $content . '<p class="empty-state">No email templates have been created.</p></section>';
+        }
+        $content .= '<div class="table-wrap"><table><thead><tr><th>Application</th><th>Name</th><th>Slug</th>'
+            . '<th>Format</th><th>Status</th><th></th></tr></thead><tbody>';
+        $dialogs = '';
+        foreach ($templates as $template) {
+            $id = (int) $template['id'];
+            $content .= '<tr><td>' . Http::escape($template['application_name']) . '</td><td>'
+                . Http::escape($template['name']) . '</td><td><code>' . Http::escape($template['slug'])
+                . '</code></td><td>' . Http::escape($template['format']) . '</td><td><span class="status-badge '
+                . ((int) $template['is_active'] === 1 ? 'is-active' : 'is-disabled') . '">'
+                . ((int) $template['is_active'] === 1 ? 'Active' : 'Inactive') . '</span></td><td>'
+                . '<button type="button" class="secondary" data-open-modal="template-edit-' . $id . '">Edit</button>'
+                . '<form method="post" action="/admin/templates/toggle" class="inline-form">' . $this->csrfInput()
+                . '<input type="hidden" name="template_id" value="' . $id . '"><button class="secondary">'
+                . ((int) $template['is_active'] === 1 ? 'Deactivate' : 'Activate') . '</button></form></td></tr>';
+            $dialogs .= '<dialog class="admin-modal" id="template-edit-' . $id . '" aria-labelledby="template-edit-title-' . $id . '">'
+                . '<div class="modal-header"><h2 id="template-edit-title-' . $id . '">Edit email template</h2>'
+                . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
+                . $this->emailTemplateForm($applications, $template) . '</dialog>';
+        }
+        return $content . '</tbody></table></div>' . $dialogs . '</section>';
+    }
+
+    private function emailTemplateForm(array $applications, ?array $template = null): string
+    {
+        $editing = $template !== null;
+        $form = '<form method="post" action="/admin/templates/' . ($editing ? 'update' : 'create')
+            . '" class="form-grid modal-form template-form">' . $this->csrfInput();
+        if ($editing) {
+            $form .= '<input type="hidden" name="template_id" value="' . (int) $template['id'] . '">';
+        }
+        $form .= '<label>Application <select name="application_id" required><option value="">Select an application</option>';
+        foreach ($applications as $application) {
+            $selected = $editing && (int) $template['application_id'] === (int) $application['id'] ? ' selected' : '';
+            $form .= '<option value="' . (int) $application['id'] . '"' . $selected . '>'
+                . Http::escape($application['name']) . '</option>';
+        }
+        return $form . '</select></label>'
+            . '<label>Template name <input name="name" maxlength="120" required value="'
+            . Http::escape($template['name'] ?? '') . '"></label>'
+            . '<label>API slug <input name="slug" maxlength="80" pattern="[a-z0-9][a-z0-9_-]*" required value="'
+            . Http::escape($template['slug'] ?? '') . '"><span class="form-help">Lowercase letters, numbers, hyphens, and underscores.</span></label>'
+            . '<label>Format <select name="format" required><option value="text"'
+            . (($template['format'] ?? 'text') === 'text' ? ' selected' : '') . '>Plain text</option><option value="html"'
+            . (($template['format'] ?? '') === 'html' ? ' selected' : '') . '>HTML</option></select></label>'
+            . '<label class="template-subject">Subject template <input name="subject_template" maxlength="255" required value="'
+            . Http::escape($template['subject_template'] ?? '') . '"></label>'
+            . '<label class="template-message">Message template <textarea class="template-body" name="body_template" rows="9" maxlength="50000" required>'
+            . Http::escape($template['body_template'] ?? '') . '</textarea></label>'
+            . '<p class="form-help template-help">For HTML templates, variable values are HTML-escaped before insertion.</p>'
+            . '<div class="form-actions"><button>' . ($editing ? 'Save template' : 'Create template') . '</button>'
+            . '<button type="button" class="secondary" data-close-modal>Cancel</button></div></form>';
     }
 
     private function sendEmailContent(PDO $pdo): string
@@ -580,7 +747,8 @@ final class Admin
             . '</ol>'
             . '<h3>Send and review messages</h3>'
             . '<p>Use <a href="/admin/send-email">Messaging → Send email</a> to send a message manually. Select an active application and one of its assigned senders, then enter the recipient, subject, format, and message. A configured default recipient is prefilled but can be changed. Sending happens immediately.</p>'
-            . '<p><a href="/admin/email-history">Messaging → Email history</a> shows recent delivery attempts, including status and errors. Message bodies are not stored. Revoke unused or exposed keys from API tokens, and update the application if its SMTP server or sender assignments change.</p>'
+            . '<p><a href="/admin/templates">Messaging → Email templates</a> lets you create application-scoped templates for API requests. Their variables use <code>{{name}}</code> placeholders; values inserted into HTML templates are escaped.</p>'
+            . '<p><a href="/admin/email-history">Messaging → Email history</a> shows searchable, paginated delivery attempts, including status and errors. Message bodies are not stored. Revoke unused or exposed keys from API tokens, and update the application if its SMTP server or sender assignments change.</p>'
             . '</section>';
     }
 
@@ -628,20 +796,32 @@ PHP;
             'body' => '<p>Thank you for your order.</p>',
             'format' => 'html',
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $templateRequestJson = json_encode([
+            'to' => 'recipient@example.com',
+            'from' => 'billing@example.com',
+            'template' => 'order-confirmation',
+            'variables' => [
+                'customer_name' => 'Alex',
+                'order_id' => 'A-1042',
+            ],
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         return '<section class="content-section docs-content"><h2>MailAPI documentation</h2>'
             . '<p>Send email through the SMTP server assigned to an application.</p>'
             . '<h3>Endpoint</h3><pre><code>POST /send
 Content-Type: application/json
 Authorization: Bearer YOUR_API_TOKEN</code></pre>'
             . '<h3>Request body</h3><pre><code>' . $this->highlightJson($requestJson) . '</code></pre>'
-            . '<ul><li><code>to</code>: one recipient email; may be omitted when the application has a default recipient.</li>'
+            . '<h3>Direct-send request fields</h3><ul><li><code>to</code>: one recipient email; may be omitted when the application has a default recipient.</li>'
             . '<li><code>from</code>: optional sender email, restricted to active sender addresses assigned to the application. When omitted, the application default is used.</li>'
             . '<li><code>subject</code>: required, 1–255 characters, no line breaks.</li>'
             . '<li><code>body</code>: required, 1–50,000 characters.</li>'
             . '<li><code>format</code>: <code>text</code> or <code>html</code>; defaults to <code>text</code>.</li></ul>'
+            . '<h3>Using an email template</h3><p>Alternatively, send <code>template</code> and an optional <code>variables</code> object. In this mode, omit <code>subject</code>, <code>body</code>, and <code>format</code>; those are defined by the template.</p>'
+            . '<pre><code>' . $this->highlightJson($templateRequestJson) . '</code></pre>'
+            . '<p>Templates must be active and assigned to the application associated with the Bearer token. Add templates under Messaging → Email templates. Replace placeholders such as <code>{{customer_name}}</code> in the subject or body. Every referenced variable is required and must be a string, number, or boolean. Values inserted into HTML templates are escaped. Existing direct subject/body requests continue to work.</p>'
             . '<h3>Successful response</h3><pre><code>' . $this->highlightJson('{"success":true,"data":{"message":"The email was sent.","id":123}}') . '</code></pre>'
             . '<h3>Error response</h3><pre><code>' . $this->highlightJson('{"success":false,"error":{"code":"sender_not_allowed","message":"This address is not an active sender for the application."}}') . '</code></pre>'
-            . '<p>HTTP statuses include 400, 401, 403, 405, 413, 415, 422, 429, 502, and 503. Each API token is limited to 30 requests per minute by default.</p>'
+            . '<p>HTTP statuses include 400, 401, 403, 404, 405, 413, 415, 422, 429, 502, and 503. Each API token is limited to 30 requests per minute by default.</p>'
             . '<h3>PHP example</h3><pre><code>' . $this->highlightPhp($phpExample) . '</code></pre>'
             . '<h3>Configure delivery</h3><ol><li>Create an SMTP server and test its connection.</li>'
             . '<li>Create sender addresses, then assign an SMTP server, allowed senders, and a default sender to an application.</li>'
@@ -706,7 +886,7 @@ REGEX;
     private function logTable(array $logs, bool $showServer = false): string
     {
         $columns = $showServer
-            ? '<th>SMTP server</th><th>Sender</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Error</th>'
+            ? '<th>SMTP server</th><th>Template</th><th>Sender</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Error</th>'
             : '<th>Sender</th><th>Recipient</th><th>Subject</th><th>Status</th>';
         $content = '<div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Application</th>'
             . $columns . '</tr></thead><tbody>';
@@ -720,6 +900,7 @@ REGEX;
                 . Http::escape($log['application_name']) . '</td>';
             if ($showServer) {
                 $content .= '<td>' . Http::escape($log['smtp_server_name'] ?? 'Unavailable') . '</td>';
+                $content .= '<td>' . Http::escape($log['template_slug'] ?? '—') . '</td>';
             }
             $content .= '<td>' . Http::escape($log['sender']) . '</td><td>' . Http::escape($log['recipient'])
                 . '</td><td>' . Http::escape($log['subject']) . '</td><td><span class="status-badge '
@@ -730,7 +911,9 @@ REGEX;
             $content .= '</tr>';
         }
         if (!$logs) {
-            $content .= '<tr><td colspan="' . ($showServer ? '8' : '6') . '">No emails have been sent yet.</td></tr>';
+            $content .= '<tr><td colspan="' . ($showServer ? '9' : '6') . '">'
+                . ($showServer ? 'No email attempts match these filters.' : 'No emails have been sent yet.')
+                . '</td></tr>';
         }
         return $content . '</tbody></table></div>';
     }
@@ -955,6 +1138,51 @@ REGEX;
             return;
         }
 
+        if ($path === '/admin/templates/create') {
+            $settings = $this->emailTemplateSettings($pdo);
+            $pdo->prepare(
+                'INSERT INTO email_templates
+                    (application_id, slug, name, subject_template, body_template, format)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            )->execute([
+                $settings['application_id'],
+                $settings['slug'],
+                $settings['name'],
+                $settings['subject_template'],
+                $settings['body_template'],
+                $settings['format'],
+            ]);
+            return;
+        }
+
+        if ($path === '/admin/templates/update') {
+            $templateId = (int) ($_POST['template_id'] ?? 0);
+            $this->requireRecord($pdo, 'email_templates', $templateId, 'Email template');
+            $settings = $this->emailTemplateSettings($pdo);
+            $pdo->prepare(
+                'UPDATE email_templates
+                 SET application_id = ?, slug = ?, name = ?, subject_template = ?, body_template = ?, format = ?
+                 WHERE id = ?'
+            )->execute([
+                $settings['application_id'],
+                $settings['slug'],
+                $settings['name'],
+                $settings['subject_template'],
+                $settings['body_template'],
+                $settings['format'],
+                $templateId,
+            ]);
+            return;
+        }
+
+        if ($path === '/admin/templates/toggle') {
+            $templateId = (int) ($_POST['template_id'] ?? 0);
+            $this->requireRecord($pdo, 'email_templates', $templateId, 'Email template');
+            $pdo->prepare('UPDATE email_templates SET is_active = 1 - is_active WHERE id = ?')
+                ->execute([$templateId]);
+            return;
+        }
+
         if ($path === '/admin/tokens/create') {
             $applicationId = (int) ($_POST['application_id'] ?? 0);
             $this->requireApplication($pdo, $applicationId);
@@ -991,6 +1219,47 @@ REGEX;
             throw new \RuntimeException('Enter a valid email address.');
         }
         return $value;
+    }
+
+    private function emailTemplateSettings(PDO $pdo): array
+    {
+        $applicationId = $this->optionalId($_POST['application_id'] ?? '', 'application');
+        if ($applicationId === null) {
+            throw new \RuntimeException('Select an application for the email template.');
+        }
+        $this->requireApplication($pdo, $applicationId);
+
+        $name = $_POST['name'] ?? null;
+        $slug = $_POST['slug'] ?? null;
+        $subject = $_POST['subject_template'] ?? null;
+        $body = $_POST['body_template'] ?? null;
+        $format = $_POST['format'] ?? null;
+        if (!is_string($name) || trim($name) === '' || strlen(trim($name)) > 120
+            || preg_match('/[\x00-\x1F]/', $name)) {
+            throw new \RuntimeException('The template name must be 1 to 120 characters and contain no control characters.');
+        }
+        if (!is_string($slug) || !preg_match('/^[a-z0-9][a-z0-9_-]{0,79}$/', $slug)) {
+            throw new \RuntimeException('The template slug must start with a lowercase letter or number and contain only lowercase letters, numbers, hyphens, or underscores.');
+        }
+        if (!is_string($subject) || trim($subject) === '' || strlen(trim($subject)) > 255
+            || preg_match('/[\r\n\x00-\x1F]/', $subject)) {
+            throw new \RuntimeException('The subject template must be 1 to 255 characters and contain no line breaks.');
+        }
+        if (!is_string($body) || trim($body) === '' || strlen($body) > 50000
+            || str_contains($body, "\0")) {
+            throw new \RuntimeException('The message template must be 1 to 50000 characters and contain no null bytes.');
+        }
+        if (!is_string($format) || !in_array($format, ['text', 'html'], true)) {
+            throw new \RuntimeException('Choose text or HTML template format.');
+        }
+        return [
+            'application_id' => $applicationId,
+            'slug' => $slug,
+            'name' => trim($name),
+            'subject_template' => trim($subject),
+            'body_template' => $body,
+            'format' => $format,
+        ];
     }
 
     private function applicationIdentity(mixed $rawName, mixed $rawSlug): array
@@ -1060,7 +1329,7 @@ REGEX;
 
     private function requireRecord(PDO $pdo, string $table, int $id, string $label): void
     {
-        if (!in_array($table, ['applications', 'smtp_servers', 'senders'], true) || $id < 1) {
+        if (!in_array($table, ['applications', 'smtp_servers', 'senders', 'email_templates'], true) || $id < 1) {
             throw new \RuntimeException("{$label} not found.");
         }
         $statement = $pdo->prepare("SELECT id FROM {$table} WHERE id = ?");
@@ -1185,6 +1454,9 @@ REGEX;
         if (str_starts_with($path, '/admin/tokens/')) {
             return '/admin/tokens';
         }
+        if (str_starts_with($path, '/admin/templates/')) {
+            return '/admin/templates';
+        }
         if ($path === '/admin/send-email') {
             return '/admin/send-email';
         }
@@ -1234,6 +1506,7 @@ REGEX;
             'overview' => '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
             'send' => '<path d="m21 3-7.5 18-3.8-7.7L2 9.5 21 3Z"/><path d="m9.7 13.3 4.8-4.8"/>',
             'history' => '<path d="M3 11a9 9 0 1 1 2.6 6.4"/><path d="M3 4v7h7"/><path d="M12 7v5l3 2"/>',
+            'template' => '<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
             'applications' => '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>',
             'server' => '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/>',
             'senders' => '<circle cx="9" cy="8" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1H3ZM17 11a3 3 0 1 0-1-5.8M18 14a5 5 0 0 1 3 4.6v1h-3"/>',
@@ -1260,6 +1533,7 @@ REGEX;
             foreach ([
                 '/admin/send-email' => ['Send email', 'send'],
                 '/admin/email-history' => ['Email history', 'history'],
+                '/admin/templates' => ['Email templates', 'template'],
             ] as $route => [$label, $icon]) {
                 $navigation .= $this->navigationLink($route, $label, $icon);
             }
@@ -1281,7 +1555,7 @@ REGEX;
 :root{color-scheme:dark;--bg:#111315;--surface:#191c1f;--surface-soft:#15181b;--border:#2c3136;--border-strong:#3a4249;--text:#e5e8eb;--muted:#a0a7af;--accent:#007e49;--accent-strong:#007e49;--accent-hover:#00965a;--accent-link:#39c985;--danger:#d58b8f;--success:#90b7a0}
 *{box-sizing:border-box}
 body{min-height:100vh;margin:0;background:var(--bg);color:var(--text);font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-.shell{width:min(1540px,calc(100% - 3rem));margin:0 auto}
+.shell{width:min(1280px,calc(100% - 3rem));margin:0 auto}
 header{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:1.25rem;border-bottom:1px solid var(--border)}
 .brand{display:inline-flex;align-items:center;text-decoration:none}
 .brand-logo{display:block;width:min(196px,38vw);height:34px;object-fit:contain;object-position:left center}
@@ -1334,6 +1608,16 @@ a:not(.brand):not(.nav-link):hover{color:#75dfa9;text-decoration-color:currentCo
 textarea{display:block;width:100%;margin-top:.35rem;padding:.7rem .75rem;border:1px solid #393f44;border-radius:5px;background:#111416;color:var(--text);font:inherit;font-size:.84rem;line-height:1.55;resize:vertical}
 textarea:focus{border-color:var(--accent);outline:2px solid rgba(0,126,73,.25)}
 .form-actions{grid-column:1/-1}
+.history-filters{grid-template-columns:minmax(180px,2fr) minmax(150px,1fr) minmax(130px,1fr)}
+.history-filters .form-actions{display:flex;align-items:center;gap:.75rem}
+.history-summary{margin:.8rem 0 .45rem;font-size:.75rem}
+.pagination{display:flex;justify-content:flex-end;gap:.55rem;margin-top:.7rem}
+.pagination a,.button-link{display:inline-flex;align-items:center;min-height:34px;padding:.4rem .65rem;border:1px solid var(--border-strong);border-radius:5px;text-decoration:none}
+.inline-form{display:inline-block}
+.template-body{min-height:170px}
+.template-form{align-items:start}
+.template-form input,.template-form select{height:42px}
+.template-form .template-subject,.template-form .template-message,.template-form .template-help,.template-form .form-actions{grid-column:1/-1}
 .form-help{grid-column:1/-1;margin:0;color:var(--muted);font-size:.72rem}
 fieldset{display:flex;flex-wrap:wrap;gap:.2rem .9rem;grid-column:1/-1;margin:.3rem 0 .6rem;padding:.7rem .8rem;border:1px solid var(--border);border-radius:5px}
 legend{padding:0 .25rem;color:var(--muted);font-size:.76rem}

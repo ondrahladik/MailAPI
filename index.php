@@ -12,7 +12,7 @@ try {
     $path = rtrim($path, '/') ?: '/';
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
-    if ($path === '/mail/send') {
+    if ($path === '/send') {
         if ($method !== 'POST') {
             Http::jsonError(405, 'method_not_allowed', 'Use the POST method.', ['Allow' => 'POST']);
         }

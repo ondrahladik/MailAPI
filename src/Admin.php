@@ -597,7 +597,7 @@ $payload = [
     'format' => 'html',
 ];
 
-$curl = curl_init('https://mail.example.com/mail/send');
+$curl = curl_init('https://mail.example.com/send');
 curl_setopt_array($curl, [
     CURLOPT_POST => true,
     CURLOPT_RETURNTRANSFER => true,
@@ -630,7 +630,7 @@ PHP;
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         return '<section class="content-section docs-content"><h2>Mail API documentation</h2>'
             . '<p>Send email through the SMTP server assigned to an application.</p>'
-            . '<h3>Endpoint</h3><pre><code>POST /mail/send
+            . '<h3>Endpoint</h3><pre><code>POST /send
 Content-Type: application/json
 Authorization: Bearer YOUR_API_TOKEN</code></pre>'
             . '<h3>Request body</h3><pre><code>' . $this->highlightJson($requestJson) . '</code></pre>'
@@ -1439,7 +1439,8 @@ code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;backgroun
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 CSS;
         echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            . '<title>' . Http::escape($title) . ' - Mail API</title><style>' . $styles
+            . '<link rel="icon" href="/assets/favicon.ico" type="image/x-icon"><title>'
+            . Http::escape($title) . ' - Mail API</title><style>' . $styles
             . '</style></head><body' . ($authenticated ? '' : ' class="auth-page"') . '><div class="shell"><header>'
             . '<a class="brand" href="/admin"><img class="brand-logo" src="/assets/logo.png" alt="Mail API Administration"></a>'
             . $logout . '</header>'

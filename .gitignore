@@ -1,0 +1,16 @@
+# Generated configuration and secrets
+/config.php
+/.env
+/.env.*
+!/.env.example
+
+# Composer dependencies
+/vendor/
+
+# Local logs
+*.log
+/logs/
+
+# Operating system files
+.DS_Store
+Thumbs.db

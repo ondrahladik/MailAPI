@@ -1,0 +1,11 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+RewriteRule ^(src|database|vendor|bin)(/|$) - [F,END,NC]
+RewriteRule ^(config\.php|config\.example\.php|composer\.(json|lock)|README\.md)$ - [F,END,NC]
+RewriteRule (^|/)\. - [F,END]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

@@ -1,0 +1,9 @@
+{
+  "name": "local/mail-api",
+  "description": "Central SMTP mail API with application-scoped tokens and an admin interface",
+  "type": "project",
+  "require": {
+    "php": ">=8.0",
+    "phpmailer/phpmailer": "^6.9"
+  }
+}

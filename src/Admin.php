@@ -257,9 +257,7 @@ final class Admin
              ORDER BY l.created_at DESC LIMIT 8'
         )->fetchAll();
 
-        $content = '<section class="hero"><span class="eyebrow">Mail operations</span><h2>Service overview</h2>'
-            . '<p>Manage the building blocks of your email delivery service.</p></section>'
-            . '<div class="metrics"><article class="metric-card"><span class="metric-label">Applications</span><strong>'
+        $content = '<div class="metrics"><article class="metric-card"><span class="metric-label">Applications</span><strong>'
             . (int) $applications['total'] . '</strong><span class="metric-detail">' . (int) $applications['active'] . ' active</span></article>'
             . '<article class="metric-card"><span class="metric-label">SMTP servers</span><strong>'
             . (int) $servers['total'] . '</strong><span class="metric-detail">' . (int) $servers['active'] . ' active</span></article>'
@@ -291,7 +289,7 @@ final class Admin
             $senderIdsByApplication[(int) $assignment['application_id']][] = (int) $assignment['sender_id'];
         }
 
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>Applications</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">Applications</h1>'
             . '<p>Applications isolate API access and sender configuration.</p></div>'
             . '<button type="button" class="secondary" data-open-modal="application-create">Add application</button></div>'
             . '<dialog class="admin-modal" id="application-create" aria-labelledby="application-create-title">'
@@ -379,7 +377,7 @@ final class Admin
             'SELECT s.*, (SELECT COUNT(*) FROM applications a WHERE a.smtp_server_id = s.id) AS application_count
              FROM smtp_servers s ORDER BY s.name'
         )->fetchAll();
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>SMTP servers</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">SMTP servers</h1>'
             . '<p>Credentials are encrypted before they are stored.</p></div>'
             . '<button type="button" class="secondary" data-open-modal="smtp-create">Add SMTP server</button></div>'
             . '<dialog class="admin-modal" id="smtp-create" aria-labelledby="smtp-create-title">'
@@ -427,14 +425,14 @@ final class Admin
             'SELECT s.*, (SELECT COUNT(*) FROM application_senders x WHERE x.sender_id = s.id) AS application_count
              FROM senders s ORDER BY s.email'
         )->fetchAll();
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>Sender addresses</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">Sender addresses</h1>'
             . '<p>Sender identities are separate from SMTP connection credentials.</p></div>'
             . '<button type="button" class="secondary" data-open-modal="sender-create">Add sender address</button></div>'
             . '<dialog class="admin-modal" id="sender-create" aria-labelledby="sender-create-title">'
             . '<div class="modal-header"><h2 id="sender-create-title">New sender address</h2>'
             . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
             . $this->senderForm() . '</dialog></section><section class="content-section"><div class="section-heading"><div>'
-            . '<h2>Sender addresses</h2><p>Assign these identities to applications on the Applications page.</p></div>'
+            . '<h2>Configured sender addresses</h2><p>Assign these identities to applications on the Applications page.</p></div>'
             . '<span class="section-count">' . count($senders) . '</span></div>';
         if (!$senders) {
             return $content . '<p class="empty-state">No sender addresses configured.</p></section>';
@@ -472,7 +470,7 @@ final class Admin
              FROM api_tokens t JOIN applications a ON a.id = t.application_id
              ORDER BY t.created_at DESC LIMIT 100'
         )->fetchAll();
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>API tokens</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">API tokens</h1>'
             . '<p>Tokens are displayed once. Store them in a secret manager.</p></div>'
             . '<button type="button" class="secondary" data-open-modal="token-create">Create token</button></div>'
             . '<dialog class="admin-modal" id="token-create" aria-labelledby="token-create-title">'
@@ -576,7 +574,7 @@ final class Admin
         $logs = $logsQuery->fetchAll();
         $applications = $pdo->query('SELECT id, name FROM applications ORDER BY name')->fetchAll();
 
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>Email history</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">Email history</h1>'
             . '<p>Search delivery attempts by sender, recipient, subject, or template. Message bodies are not stored.</p></div></div>'
             . $notice . '<form method="get" action="/admin/email-history" class="form-grid history-filters">'
             . '<label>Search <input name="q" maxlength="150" value="' . Http::escape($search) . '" placeholder="Email, subject, or template"></label>'
@@ -621,7 +619,7 @@ final class Admin
              JOIN applications application ON application.id = template.application_id
              ORDER BY application.name, template.name'
         )->fetchAll();
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>Email templates</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">Email templates</h1>'
             . '<p>Templates belong to one application and are available only to its API tokens. Use <code>{{variable}}</code> placeholders.</p></div>'
             . '<button type="button" class="secondary" data-open-modal="template-create">Create template</button></div>'
             . '<dialog class="admin-modal" id="template-create" aria-labelledby="template-create-title">'
@@ -724,7 +722,7 @@ final class Admin
             static fn(array $application): bool => (int) $application['active_sender_count'] > 0
         ));
 
-        $content = '<section class="content-section"><div class="section-heading"><div><h2>Send an email</h2>'
+        $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">Send an email</h1>'
             . '<p>Send through an active application using its assigned SMTP server and sender identities.</p></div></div>';
         if (!$readyApplications) {
             return $content . '<p class="empty-state">No active application is ready to send. Configure an active SMTP server and at least one active sender for an application first.</p>'
@@ -759,7 +757,7 @@ final class Admin
 
     private function adminDocsContent(): string
     {
-        return '<section class="content-section docs-content"><h2>Admin guide</h2>'
+        return '<section class="content-section docs-content"><h1 class="card-title">Admin guide</h1>'
             . '<p>Manage SMTP delivery, sender identities, applications, and API access from the administration menu.</p>'
             . '<h3>Configure an application</h3><ol>'
             . '<li>Open <a href="/admin/smtp-servers">SMTP servers</a>, add the central SMTP connection, and use <strong>Test connection</strong>. The test checks connectivity and authentication; it does not send an email.</li>'
@@ -827,7 +825,7 @@ PHP;
                 'order_id' => 'A-1042',
             ],
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        return '<section class="content-section docs-content"><h2>MailAPI documentation</h2>'
+        return '<section class="content-section docs-content"><h1 class="card-title">MailAPI documentation</h1>'
             . '<p>Send email through the SMTP server assigned to an application.</p>'
             . '<h3>Endpoint</h3><pre><code>POST /send
 Content-Type: application/json
@@ -1602,11 +1600,12 @@ main{padding:.9rem 0 4rem}
 .page-title{margin:.15rem 0 1rem;color:var(--muted);font-size:.78rem;font-weight:550;letter-spacing:.02em}
 h1,h2,h3,p{margin-top:0}
 h1{letter-spacing:-.025em}
-h2{margin-bottom:.35rem;font-size:1.16rem;letter-spacing:-.015em}
+h2,h1.card-title{margin-bottom:.35rem;font-size:1.16rem;letter-spacing:-.015em}
 h3{margin-bottom:.45rem;font-size:1rem;letter-spacing:-.01em}
 p{color:var(--muted)}
 .hero{position:relative;display:flex;align-items:center;justify-content:space-between;gap:2rem;overflow:hidden;margin:1.3rem 0 1rem;padding:1.7rem 2rem;border:1px solid var(--border);border-radius:10px;background:#181b1e}
 .hero h1{max-width:700px;margin:.45rem 0 .4rem;font-size:clamp(1.45rem,3vw,2.1rem);line-height:1.2}
+.hero h1.card-title{max-width:none;margin:0 0 .35rem;font-size:1.16rem;line-height:1.55;letter-spacing:-.015em}
 .hero p{max-width:680px;margin:0;font-size:.9rem}
 .eyebrow{display:block;margin-bottom:.25rem;color:#aab1b7;font-size:.74rem;font-weight:550;letter-spacing:.02em}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem;margin:0 0 1.6rem}
@@ -1616,7 +1615,6 @@ p{color:var(--muted)}
 .metric-detail{color:var(--muted);font-size:.73rem}
 .admin-layout{display:grid;grid-template-columns:205px minmax(0,1fr);align-items:start;gap:1.5rem}
 .page-main{min-width:0;padding:1.35rem 0 4rem}
-.page-main>.page-title{margin:.1rem 0 1.2rem;color:var(--text);font-size:1.55rem;font-weight:650;letter-spacing:-.025em}
 .sidebar{position:sticky;top:1.25rem;padding:.8rem .65rem;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
 .admin-layout>.sidebar{margin-top:1.35rem}
 .sidebar-label{display:block;padding:.35rem .65rem .65rem;color:#858b91;font-size:.65rem;font-weight:700;letter-spacing:.1em}
@@ -1774,7 +1772,7 @@ CSS;
             . '<a class="brand" href="/admin"><img class="brand-logo" src="/assets/logo.png" alt="MailAPI Administration"></a>'
             . $logout . '</header>'
             . ($authenticated ? '<div class="admin-layout">' . $navigation . '<main class="page-main">' : '<main>')
-            . '<h1 class="page-title">' . Http::escape($title) . '</h1>'
+            . ($authenticated ? '' : '<h1 class="page-title">' . Http::escape($title) . '</h1>')
             . $content . '</main>' . ($authenticated ? '</div>' : '') . '</div>'
             . '<script nonce="' . Http::escape($this->cspNonce) . '">(function(){'
             . 'document.querySelectorAll(".toast").forEach(function(toast){'

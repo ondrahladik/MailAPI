@@ -102,7 +102,9 @@ final class Admin
     {
         if (!$this->validCsrf($_POST['csrf'] ?? null)) {
             http_response_code(400);
-            $this->page('Sign in', $this->toast('error', 'Invalid request', 'Reload the sign-in page and try again.'));
+            $this->page('Sign in', $this->toastStack(
+                $this->toast('error', 'Invalid request', 'Reload the sign-in page and try again.')
+            ));
         }
 
         $pdo = Database::connection();
@@ -113,7 +115,9 @@ final class Admin
         if ($limitState && (int) $limitState['attempts'] >= 8
             && strtotime($limitState['window_started_at'] . ' UTC') > time() - 900) {
             http_response_code(429);
-            $this->page('Sign in', $this->toast('error', 'Too many attempts', 'Try again in 15 minutes.'));
+            $this->page('Sign in', $this->toastStack(
+                $this->toast('error', 'Too many attempts', 'Try again in 15 minutes.')
+            ));
         }
 
         $password = $_POST['password'] ?? '';
@@ -127,8 +131,9 @@ final class Admin
                    window_started_at = IF(window_started_at < UTC_TIMESTAMP() - INTERVAL 15 MINUTE, UTC_TIMESTAMP(), window_started_at)'
             )->execute([$ipHash]);
             http_response_code(401);
-            $this->page('Sign in', $this->toast('error', 'Sign-in failed', 'Invalid credentials.')
-                . $this->loginForm());
+            $this->page('Sign in', $this->toastStack(
+                $this->toast('error', 'Sign-in failed', 'Invalid credentials.')
+            ) . $this->loginForm());
         }
 
         $pdo->prepare('DELETE FROM admin_login_limits WHERE ip_hash = ?')->execute([$ipHash]);
@@ -228,6 +233,11 @@ final class Admin
             . '<div class="toast-content"><strong>' . Http::escape($title) . '</strong><p>'
             . Http::escape($message) . '</p></div>'
             . '<button class="toast-dismiss" type="button" aria-label="Dismiss notification">×</button></div>';
+    }
+
+    private function toastStack(string $toast): string
+    {
+        return '<div class="toast-stack">' . $toast . '</div>';
     }
 
     private function overviewContent(PDO $pdo): string
@@ -1205,7 +1215,9 @@ REGEX;
     {
         if (!$this->validCsrf($_POST['csrf'] ?? null)) {
             http_response_code(400);
-            $this->page('Invalid request', $this->toast('error', 'Invalid request', 'The security token expired. Reload the page and try again.'), true);
+            $this->page('Invalid request', $this->toastStack(
+                $this->toast('error', 'Invalid request', 'The security token expired. Reload the page and try again.')
+            ), true);
         }
     }
 
@@ -1266,15 +1278,14 @@ REGEX;
                 . '<div class="sidebar-note">Mail API</div></aside>';
         }
         $styles = <<<'CSS'
-:root{color-scheme:dark;--bg:#111315;--surface:#191c1f;--surface-soft:#15181b;--border:#2c3136;--border-strong:#3a4249;--text:#e5e8eb;--muted:#a0a7af;--accent:#b4c7dc;--accent-strong:#607b98;--danger:#d58b8f;--success:#90b7a0}
+:root{color-scheme:dark;--bg:#111315;--surface:#191c1f;--surface-soft:#15181b;--border:#2c3136;--border-strong:#3a4249;--text:#e5e8eb;--muted:#a0a7af;--accent:#007e49;--accent-strong:#007e49;--accent-hover:#00965a;--accent-link:#39c985;--danger:#d58b8f;--success:#90b7a0}
 *{box-sizing:border-box}
 body{min-height:100vh;margin:0;background:var(--bg);color:var(--text);font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .shell{width:min(1540px,calc(100% - 3rem));margin:0 auto}
 header{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:1.25rem;border-bottom:1px solid var(--border)}
-.brand{display:inline-flex;align-items:center;gap:.7rem;color:var(--text);text-decoration:none;font-size:.98rem;font-weight:700;letter-spacing:-.015em}
-.brand small{display:block;color:var(--muted);font-size:.66rem;font-weight:500;letter-spacing:.03em}
-.header-meta{display:flex;align-items:center;gap:.55rem;margin-left:auto;color:var(--muted);font-size:.78rem}
-.header-dot,.status-dot{width:7px;height:7px;border-radius:50%;background:var(--success)}
+.brand{display:inline-flex;align-items:center;text-decoration:none}
+.brand-logo{display:block;width:min(196px,38vw);height:34px;object-fit:contain;object-position:left center}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--success)}
 header form{margin:0}
 main{padding:.9rem 0 4rem}
 .page-title{margin:.15rem 0 1rem;color:var(--muted);font-size:.78rem;font-weight:550;letter-spacing:.02em}
@@ -1305,10 +1316,12 @@ p{color:var(--muted)}
 .sidebar-docs .sidebar-label{padding-bottom:.35rem}
 .nav-link{display:flex;align-items:center;gap:.55rem;min-height:38px;padding:.5rem .65rem;border-radius:5px;color:#afb5bc;text-decoration:none;font-size:.82rem;font-weight:550;transition:background .15s ease,color .15s ease}
 .nav-icon{width:16px;height:16px;flex:0 0 16px;color:#8997a4}
-.nav-link.current .nav-icon{color:#d4dde5}
+.nav-link.current .nav-icon{color:var(--accent-link)}
 .nav-link span{min-width:0;overflow-wrap:anywhere}
-.nav-link:hover,.nav-link:focus-visible{background:#24282c;color:var(--text);outline:none}
-.nav-link.current{border-left:2px solid #91a6ba;background:#22262a;color:#e0e4e8;padding-left:calc(.65rem - 2px)}
+.nav-link:hover,.nav-link:focus-visible{background:rgba(0,126,73,.12);color:var(--accent-link);outline:none}
+.nav-link.current{border-left:2px solid var(--accent);background:rgba(0,126,73,.16);color:var(--accent-link);padding-left:calc(.65rem - 2px)}
+a:not(.brand):not(.nav-link){color:var(--accent-link);text-decoration-color:rgba(0,126,73,.65)}
+a:not(.brand):not(.nav-link):hover{color:#75dfa9;text-decoration-color:currentColor}
 .sidebar-note{display:flex;align-items:center;gap:.55rem;margin:.75rem .2rem 0;padding:.75rem .5rem 0;border-top:1px solid var(--border);color:#969da4;font-size:.68rem}
 .content-section{scroll-margin-top:1rem;margin:0 0 1rem;padding:1.15rem;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
 .section-heading,.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}
@@ -1319,13 +1332,13 @@ p{color:var(--muted)}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.15rem .9rem;align-items:end}
 .send-email-form .body-field{grid-column:1/-1}
 textarea{display:block;width:100%;margin-top:.35rem;padding:.7rem .75rem;border:1px solid #393f44;border-radius:5px;background:#111416;color:var(--text);font:inherit;font-size:.84rem;line-height:1.55;resize:vertical}
-textarea:focus{border-color:var(--accent);outline:2px solid rgba(180,199,220,.13)}
+textarea:focus{border-color:var(--accent);outline:2px solid rgba(0,126,73,.25)}
 .form-actions{grid-column:1/-1}
 .form-help{grid-column:1/-1;margin:0;color:var(--muted);font-size:.72rem}
 fieldset{display:flex;flex-wrap:wrap;gap:.2rem .9rem;grid-column:1/-1;margin:.3rem 0 .6rem;padding:.7rem .8rem;border:1px solid var(--border);border-radius:5px}
 legend{padding:0 .25rem;color:var(--muted);font-size:.76rem}
 .choice{display:inline-flex;align-items:center;gap:.45rem;margin:.25rem 0;font-weight:450}
-input[type=checkbox]{display:inline-block;width:auto;margin:0;accent-color:#8b9cad}
+input[type=checkbox]{display:inline-block;width:auto;margin:0;accent-color:var(--accent)}
 select[multiple]{min-height:120px}
 .application{margin:.55rem 0;padding:.9rem;border:1px solid #303438;border-radius:6px;background:#191c1f}
 .application-heading{display:flex;align-items:center;justify-content:space-between;gap:.8rem}
@@ -1341,7 +1354,7 @@ select[multiple]{min-height:120px}
 .admin-modal>form{max-height:calc(90vh - 3.7rem);margin:0;padding:1rem 1.15rem;overflow:auto}
 .admin-modal .form-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
 .empty-state{padding:1.25rem;border:1px dashed var(--border-strong);border-radius:6px;text-align:center}
-.text-link{color:#bdc9d4;font-size:.78rem}
+.text-link{color:var(--accent-link);font-size:.78rem}
 .docs-content h3{margin:1.4rem 0 .55rem}
 .docs-content ul,.docs-content ol{padding-left:1.35rem;color:#c5c9cd}
 .docs-content li{margin:.35rem 0}
@@ -1370,9 +1383,9 @@ select[multiple]{min-height:120px}
 label{display:block;margin:.75rem 0;color:#bec3c8;font-size:.76rem;font-weight:600}
 input,select{display:block;width:100%;margin-top:.35rem;padding:.63rem .72rem;border:1px solid #393f44;border-radius:5px;background:#111416;color:var(--text);font:inherit;font-size:.82rem}
 input::placeholder{color:#777f86}
-input:focus,select:focus{border-color:var(--accent);outline:2px solid rgba(180,199,220,.13)}
+input:focus,select:focus{border-color:var(--accent);outline:2px solid rgba(0,126,73,.25)}
 button{display:inline-flex;align-items:center;justify-content:center;min-height:35px;margin:.25rem .2rem .1rem 0;padding:.48rem .75rem;border:1px solid transparent;border-radius:5px;background:var(--accent-strong);color:#fff;font:inherit;font-size:.76rem;font-weight:650;cursor:pointer;transition:background .15s ease,border-color .15s ease}
-button:hover{background:#718ba5}
+button:hover{background:var(--accent-hover)}
 button:focus-visible{outline:2px solid rgba(180,199,220,.45);outline-offset:2px}
 button.secondary{border-color:#3a4147;background:#23272b;color:#d2d6d9}
 button.secondary:hover{background:#2c3136}
@@ -1428,8 +1441,7 @@ CSS;
         echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>' . Http::escape($title) . ' - Mail API</title><style>' . $styles
             . '</style></head><body' . ($authenticated ? '' : ' class="auth-page"') . '><div class="shell"><header>'
-            . '<a class="brand" href="/admin"><span>Mail API<small>Administration</small></span></a>'
-            . '<div class="header-meta"><span class="header-dot"></span>Control plane</div>'
+            . '<a class="brand" href="/admin"><img class="brand-logo" src="/assets/logo.png" alt="Mail API Administration"></a>'
             . $logout . '</header>'
             . ($authenticated ? '<div class="admin-layout">' . $navigation . '<main class="page-main">' : '<main>')
             . '<h1 class="page-title">' . Http::escape($title) . '</h1>'

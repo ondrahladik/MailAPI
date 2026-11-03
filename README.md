@@ -1,5 +1,7 @@
 # Installation
 
+MailAPI is a centralized PHP and MariaDB service for sending email through configured SMTP servers. Applications use bearer tokens with the `POST /send` REST endpoint, while the admin interface manages SMTP servers, senders, applications, tokens, delivery history, and manual email.
+
 ## Requirements
 
 - PHP 8.0 or later with the `pdo_mysql` and `openssl` extensions

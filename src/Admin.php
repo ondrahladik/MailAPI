@@ -611,14 +611,14 @@ curl_setopt_array($curl, [
 
 $response = curl_exec($curl);
 if ($response === false) {
-    throw new RuntimeException('Mail API connection failed: ' . curl_error($curl));
+    throw new RuntimeException('MailAPI connection failed: ' . curl_error($curl));
 }
 $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
 curl_close($curl);
 
 $result = json_decode($response, true, 32, JSON_THROW_ON_ERROR);
 if ($status < 200 || $status >= 300 || !($result['success'] ?? false)) {
-    throw new RuntimeException($result['error']['message'] ?? 'Mail API request failed.');
+    throw new RuntimeException($result['error']['message'] ?? 'MailAPI request failed.');
 }
 PHP;
         $requestJson = json_encode([
@@ -628,7 +628,7 @@ PHP;
             'body' => '<p>Thank you for your order.</p>',
             'format' => 'html',
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        return '<section class="content-section docs-content"><h2>Mail API documentation</h2>'
+        return '<section class="content-section docs-content"><h2>MailAPI documentation</h2>'
             . '<p>Send email through the SMTP server assigned to an application.</p>'
             . '<h3>Endpoint</h3><pre><code>POST /send
 Content-Type: application/json
@@ -1275,7 +1275,7 @@ REGEX;
             $navigation .= '</nav></div><div class="sidebar-docs"><span class="sidebar-label">Docs</span><nav aria-label="Documentation">'
                 . $this->navigationLink('/admin/docs', 'API', 'api')
                 . $this->navigationLink('/admin/docs/admin', 'Admin', 'admin') . '</nav></div>'
-                . '<div class="sidebar-note">Mail API</div></aside>';
+                . '<div class="sidebar-note">MailAPI</div></aside>';
         }
         $styles = <<<'CSS'
 :root{color-scheme:dark;--bg:#111315;--surface:#191c1f;--surface-soft:#15181b;--border:#2c3136;--border-strong:#3a4249;--text:#e5e8eb;--muted:#a0a7af;--accent:#007e49;--accent-strong:#007e49;--accent-hover:#00965a;--accent-link:#39c985;--danger:#d58b8f;--success:#90b7a0}
@@ -1440,9 +1440,9 @@ code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;backgroun
 CSS;
         echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<link rel="icon" href="/assets/favicon.ico" type="image/x-icon"><title>'
-            . Http::escape($title) . ' - Mail API</title><style>' . $styles
+            . Http::escape($title) . ' - MailAPI</title><style>' . $styles
             . '</style></head><body' . ($authenticated ? '' : ' class="auth-page"') . '><div class="shell"><header>'
-            . '<a class="brand" href="/admin"><img class="brand-logo" src="/assets/logo.png" alt="Mail API Administration"></a>'
+            . '<a class="brand" href="/admin"><img class="brand-logo" src="/assets/logo.png" alt="MailAPI Administration"></a>'
             . $logout . '</header>'
             . ($authenticated ? '<div class="admin-layout">' . $navigation . '<main class="page-main">' : '<main>')
             . '<h1 class="page-title">' . Http::escape($title) . '</h1>'

@@ -37,7 +37,7 @@ final class Api
                 Http::jsonError(422, 'validation_error', 'Template requests must omit subject, body, and format.');
             }
             if (array_key_exists('variables', $data) === false) {
-                $data['variables'] = [];
+                $data['variables'] = new \stdClass();
             }
             $templateSlug = $this->stringField($data['template'], 'template', 1, 80);
             if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,79}$/', $templateSlug)) {
@@ -231,11 +231,15 @@ final class Api
 
     private function templateVariables(mixed $value): array
     {
-        if (!is_array($value) || count($value) > 100) {
+        if (!$value instanceof \stdClass) {
+            Http::jsonError(422, 'validation_error', 'The variables field must be an object with no more than 100 values.');
+        }
+        $values = get_object_vars($value);
+        if (count($values) > 100) {
             Http::jsonError(422, 'validation_error', 'The variables field must be an object with no more than 100 values.');
         }
         $variables = [];
-        foreach ($value as $name => $item) {
+        foreach ($values as $name => $item) {
             if (!is_string($name) || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $name)) {
                 Http::jsonError(422, 'validation_error', 'Template variable names must use letters, numbers, and underscores.');
             }

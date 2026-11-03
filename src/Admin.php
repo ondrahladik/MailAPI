@@ -307,21 +307,31 @@ final class Admin
             . '<span class="section-count">' . count($applications) . '</span></div>';
 
         if (!$applications) {
-            $content .= '<p class="empty-state">No applications yet. Create one to get started.</p>';
+            return $content . '<p class="empty-state">No applications yet. Create one to get started.</p></section>';
         }
 
+        $content .= '<div class="table-wrap"><table><thead><tr><th>Application</th><th>SMTP server</th>'
+            . '<th>Default sender</th><th>Default recipient</th><th>Active tokens</th><th>Status</th><th></th></tr></thead><tbody>';
+        $dialogs = '';
         foreach ($applications as $application) {
             $id = (int) $application['id'];
             $assignedIds = $senderIdsByApplication[$id] ?? [];
             $isActive = (int) $application['is_active'] === 1;
-            $content .= '<article class="application"><div class="application-heading"><div><h3>'
-                . Http::escape($application['name']) . '</h3><code>' . Http::escape($application['slug'])
-                . '</code></div><span class="status-badge ' . ($isActive ? 'is-active' : 'is-disabled') . '">'
-                . ($isActive ? 'Active' : 'Disabled') . '</span></div>'
-                . '<p class="application-meta">SMTP: ' . Http::escape($application['smtp_server_name'] ?: 'Not assigned')
-                . ' · Default sender: ' . Http::escape($application['default_sender_email'] ?: 'Not set')
-                . ' · Active tokens: ' . (int) $application['active_tokens'] . '</p>'
-                . '<dialog class="admin-modal" id="application-edit-' . $id . '" aria-labelledby="application-edit-title-' . $id . '">'
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($application['name'])
+                . '</strong><small class="table-secondary">' . Http::escape($application['slug']) . '</small></td><td>'
+                . Http::escape($application['smtp_server_name'] ?: 'Not assigned') . '</td><td>'
+                . Http::escape($application['default_sender_email'] ?: 'Not set') . '</td><td>'
+                . Http::escape($application['default_to'] ?: '—') . '</td><td>' . (int) $application['active_tokens']
+                . '</td><td><span class="status-badge ' . ($isActive ? 'is-active' : 'is-disabled') . '">'
+                . ($isActive ? 'Active' : 'Disabled') . '</span></td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="application-edit-' . $id . '">'
+                . $this->actionIcon('edit') . '<span>Edit</span></button>'
+                . '<form method="post" action="/admin/applications/toggle" class="management-action-form">' . $this->csrfInput()
+                . '<input type="hidden" name="application_id" value="' . $id . '"><button class="secondary management-action">'
+                . $this->actionIcon($isActive ? 'disable' : 'enable') . '<span>' . ($isActive ? 'Disable' : 'Enable')
+                . '</span></button></form></div></td></tr>';
+
+            $dialogs .= '<dialog class="admin-modal" id="application-edit-' . $id . '" aria-labelledby="application-edit-title-' . $id . '">'
                 . '<div class="modal-header"><h2 id="application-edit-title-' . $id . '">Application settings</h2>'
                 . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
                 . '<form method="post" action="/admin/applications/update" class="form-grid modal-form">'
@@ -334,37 +344,33 @@ final class Admin
             foreach ($servers as $server) {
                 $selected = (int) $application['smtp_server_id'] === (int) $server['id'] ? ' selected' : '';
                 $state = (int) $server['is_active'] ? '' : ' (disabled)';
-                $content .= '<option value="' . (int) $server['id'] . '"' . $selected . '>'
+                $dialogs .= '<option value="' . (int) $server['id'] . '"' . $selected . '>'
                     . Http::escape($server['name'] . $state) . '</option>';
             }
-            $content .= '</select></label><fieldset><legend>Allowed sender addresses</legend>';
+            $dialogs .= '</select></label><fieldset><legend>Allowed sender addresses</legend>';
             foreach ($senders as $sender) {
                 $senderId = (int) $sender['id'];
                 $checked = in_array($senderId, $assignedIds, true) ? ' checked' : '';
                 $state = (int) $sender['is_active'] ? '' : ' (disabled)';
-                $content .= '<label class="choice"><input type="checkbox" name="sender_ids[]" value="' . $senderId . '"'
+                $dialogs .= '<label class="choice"><input type="checkbox" name="sender_ids[]" value="' . $senderId . '"'
                     . $checked . '>' . Http::escape($sender['email'] . $state) . '</label>';
             }
             if (!$senders) {
-                $content .= '<p>No sender addresses exist. Add one on the <a href="/admin/senders">Senders</a> page.</p>';
+                $dialogs .= '<p>No sender addresses exist. Add one on the <a href="/admin/senders">Senders</a> page.</p>';
             }
-            $content .= '</fieldset><p class="form-help">The default sender must also be selected above.</p>'
+            $dialogs .= '</fieldset><p class="form-help">The default sender must also be selected above.</p>'
                 . '<label>Default sender <select name="default_sender_id"><option value="">None</option>';
             foreach ($senders as $sender) {
                 $senderId = (int) $sender['id'];
                 $selected = (int) $application['default_sender_id'] === $senderId ? ' selected' : '';
                 $state = (int) $sender['is_active'] ? '' : ' (disabled)';
-                $content .= '<option value="' . $senderId . '"' . $selected . '>'
+                $dialogs .= '<option value="' . $senderId . '"' . $selected . '>'
                     . Http::escape($sender['email'] . $state) . '</option>';
             }
-            $content .= '</select></label><div class="form-actions"><button>Save application settings</button>'
-                . '<button type="button" class="secondary" data-close-modal>Cancel</button></div></form></dialog>'
-                . '<div class="application-actions"><button type="button" class="secondary" data-open-modal="application-edit-'
-                . $id . '">Edit settings</button><form method="post" action="/admin/applications/toggle">' . $this->csrfInput()
-                . '<input type="hidden" name="application_id" value="' . $id . '"><button class="secondary">'
-                . ($isActive ? 'Disable application' : 'Enable application') . '</button></form></div></article>';
+            $dialogs .= '</select></label><div class="form-actions"><button>Save application settings</button>'
+                . '<button type="button" class="secondary" data-close-modal>Cancel</button></div></form></dialog>';
         }
-        return $content . '</section>';
+        return $content . '</tbody></table></div>' . $dialogs . '</section>';
     }
 
     private function smtpServersContent(PDO $pdo): string
@@ -380,32 +386,39 @@ final class Admin
             . '<div class="modal-header"><h2 id="smtp-create-title">New SMTP server</h2>'
             . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
             . $this->smtpServerForm() . '</dialog></section><section class="content-section"><div class="section-heading"><div>'
-            . '<h2>SMTP servers</h2><p>Connection settings are managed independently of sender addresses.</p></div>'
+            . '<h2>Configured SMTP servers</h2><p>Connection settings are managed independently of sender addresses.</p></div>'
             . '<span class="section-count">' . count($servers) . '</span></div>';
         if (!$servers) {
-            $content .= '<p class="empty-state">No SMTP servers configured.</p>';
+            return $content . '<p class="empty-state">No SMTP servers configured.</p></section>';
         }
+
+        $content .= '<div class="table-wrap"><table><thead><tr><th>SMTP server</th><th>Host</th><th>Encryption</th>'
+            . '<th>Username</th><th>Applications</th><th>Status</th><th></th></tr></thead><tbody>';
+        $dialogs = '';
         foreach ($servers as $server) {
             $isActive = (int) $server['is_active'] === 1;
-            $content .= '<article class="application"><div class="application-heading"><div><h3>'
-                . Http::escape($server['name']) . '</h3><p class="application-meta">'
-                . Http::escape($server['host']) . ':' . (int) $server['port'] . ' · '
-                . Http::escape($server['encryption']) . ' · ' . Http::escape($server['username'])
-                . ' · ' . (int) $server['application_count'] . ' applications</p></div><span class="status-badge '
-                . ($isActive ? 'is-active' : 'is-disabled') . '">' . ($isActive ? 'Active' : 'Disabled') . '</span></div>'
-                . '<div class="application-actions"><button type="button" class="secondary" data-open-modal="smtp-edit-'
-                . (int) $server['id'] . '">Edit settings</button><form method="post" action="/admin/smtp-servers/test">' . $this->csrfInput()
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($server['name']) . '</strong></td><td>'
+                . Http::escape($server['host']) . ':' . (int) $server['port'] . '</td><td>'
+                . Http::escape(strtoupper($server['encryption'])) . '</td><td>'
+                . Http::escape($server['username']) . '</td><td>' . (int) $server['application_count']
+                . '</td><td><span class="status-badge '
+                . ($isActive ? 'is-active' : 'is-disabled') . '">' . ($isActive ? 'Active' : 'Disabled') . '</span>'
+                . '</td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="smtp-edit-' . (int) $server['id'] . '">'
+                . $this->actionIcon('edit') . '<span>Edit</span></button>'
+                . '<form method="post" action="/admin/smtp-servers/test" class="management-action-form">' . $this->csrfInput()
                 . '<input type="hidden" name="server_id" value="' . (int) $server['id'] . '">'
-                . '<button class="secondary">Test connection</button></form>'
-                . '<form method="post" action="/admin/smtp-servers/toggle">' . $this->csrfInput()
-                . '<input type="hidden" name="server_id" value="' . (int) $server['id'] . '"><button class="secondary">'
-                . ($isActive ? 'Disable server' : 'Enable server') . '</button></form></div>'
-                . '<dialog class="admin-modal" id="smtp-edit-' . (int) $server['id'] . '" aria-labelledby="smtp-edit-title-'
+                . '<button class="secondary management-action">' . $this->actionIcon('test') . '<span>Test</span></button></form>'
+                . '<form method="post" action="/admin/smtp-servers/toggle" class="management-action-form">' . $this->csrfInput()
+                . '<input type="hidden" name="server_id" value="' . (int) $server['id'] . '"><button class="secondary management-action">'
+                . $this->actionIcon($isActive ? 'disable' : 'enable') . '<span>' . ($isActive ? 'Disable' : 'Enable')
+                . '</span></button></form></div></td></tr>';
+            $dialogs .= '<dialog class="admin-modal" id="smtp-edit-' . (int) $server['id'] . '" aria-labelledby="smtp-edit-title-'
                 . (int) $server['id'] . '"><div class="modal-header"><h2 id="smtp-edit-title-' . (int) $server['id']
                 . '">SMTP server settings</h2><button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
-                . $this->smtpServerForm($server) . '</dialog></article>';
+                . $this->smtpServerForm($server) . '</dialog>';
         }
-        return $content . '</section>';
+        return $content . '</tbody></table></div>' . $dialogs . '</section>';
     }
 
     private function sendersContent(PDO $pdo): string
@@ -424,25 +437,31 @@ final class Admin
             . '<h2>Sender addresses</h2><p>Assign these identities to applications on the Applications page.</p></div>'
             . '<span class="section-count">' . count($senders) . '</span></div>';
         if (!$senders) {
-            $content .= '<p class="empty-state">No sender addresses configured.</p>';
+            return $content . '<p class="empty-state">No sender addresses configured.</p></section>';
         }
+
+        $content .= '<div class="table-wrap"><table><thead><tr><th>Email</th><th>Display name</th>'
+            . '<th>Applications</th><th>Status</th><th></th></tr></thead><tbody>';
+        $dialogs = '';
         foreach ($senders as $sender) {
             $isActive = (int) $sender['is_active'] === 1;
-            $content .= '<article class="application"><div class="application-heading"><div><h3>'
-                . Http::escape($sender['email']) . '</h3><p class="application-meta">'
-                . Http::escape($sender['sender_name'] ?: 'No display name') . ' · '
-                . (int) $sender['application_count'] . ' applications</p></div><span class="status-badge '
-                . ($isActive ? 'is-active' : 'is-disabled') . '">' . ($isActive ? 'Active' : 'Disabled') . '</span></div>'
-                . '<div class="application-actions"><button type="button" class="secondary" data-open-modal="sender-edit-'
-                . (int) $sender['id'] . '">Edit sender</button><form method="post" action="/admin/senders/toggle">' . $this->csrfInput()
-                . '<input type="hidden" name="sender_id" value="' . (int) $sender['id'] . '"><button class="secondary">'
-                . ($isActive ? 'Disable sender' : 'Enable sender') . '</button></form></div>'
-                . '<dialog class="admin-modal" id="sender-edit-' . (int) $sender['id'] . '" aria-labelledby="sender-edit-title-'
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($sender['email'])
+                . '</strong></td><td>' . Http::escape($sender['sender_name'] ?: '—') . '</td><td>'
+                . (int) $sender['application_count'] . '</td><td><span class="status-badge '
+                . ($isActive ? 'is-active' : 'is-disabled') . '">' . ($isActive ? 'Active' : 'Disabled') . '</span>'
+                . '</td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="sender-edit-' . (int) $sender['id'] . '">'
+                . $this->actionIcon('edit') . '<span>Edit</span></button>'
+                . '<form method="post" action="/admin/senders/toggle" class="management-action-form">' . $this->csrfInput()
+                . '<input type="hidden" name="sender_id" value="' . (int) $sender['id'] . '"><button class="secondary management-action">'
+                . $this->actionIcon($isActive ? 'disable' : 'enable') . '<span>' . ($isActive ? 'Disable' : 'Enable')
+                . '</span></button></form></div></td></tr>';
+            $dialogs .= '<dialog class="admin-modal" id="sender-edit-' . (int) $sender['id'] . '" aria-labelledby="sender-edit-title-'
                 . (int) $sender['id'] . '"><div class="modal-header"><h2 id="sender-edit-title-' . (int) $sender['id']
                 . '">Sender address</h2><button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
-                . $this->senderForm($sender) . '</dialog></article>';
+                . $this->senderForm($sender) . '</dialog>';
         }
-        return $content . '</section>';
+        return $content . '</tbody></table></div>' . $dialogs . '</section>';
     }
 
     private function tokensContent(PDO $pdo): string
@@ -475,13 +494,13 @@ final class Admin
                 . '</td><td>' . Http::escape($token['created_at']) . '</td><td>'
                 . Http::escape($token['last_used_at'] ?: '—') . '</td><td><span class="status-badge '
                 . ($token['revoked_at'] ? 'is-disabled' : 'is-active') . '">'
-                . ($token['revoked_at'] ? 'Revoked' : 'Active') . '</span></td><td>';
+                . ($token['revoked_at'] ? 'Revoked' : 'Active') . '</span></td><td class="actions-cell"><div class="management-actions">';
             if (!$token['revoked_at']) {
-                $content .= '<form method="post" action="/admin/tokens/revoke">' . $this->csrfInput()
+                $content .= '<form method="post" action="/admin/tokens/revoke" class="management-action-form">' . $this->csrfInput()
                     . '<input type="hidden" name="token_id" value="' . (int) $token['id'] . '">'
-                    . '<button class="danger">Revoke</button></form>';
+                    . '<button class="danger management-action">' . $this->actionIcon('revoke') . '<span>Revoke</span></button></form>';
             }
-            $content .= '</td></tr>';
+            $content .= '</div></td></tr>';
         }
         if (!$tokens) {
             $content .= '<tr><td colspan="6">No tokens.</td></tr>';
@@ -621,11 +640,14 @@ final class Admin
                 . Http::escape($template['name']) . '</td><td><code>' . Http::escape($template['slug'])
                 . '</code></td><td>' . Http::escape($template['format']) . '</td><td><span class="status-badge '
                 . ((int) $template['is_active'] === 1 ? 'is-active' : 'is-disabled') . '">'
-                . ((int) $template['is_active'] === 1 ? 'Active' : 'Inactive') . '</span></td><td>'
-                . '<button type="button" class="secondary" data-open-modal="template-edit-' . $id . '">Edit</button>'
-                . '<form method="post" action="/admin/templates/toggle" class="inline-form">' . $this->csrfInput()
-                . '<input type="hidden" name="template_id" value="' . $id . '"><button class="secondary">'
-                . ((int) $template['is_active'] === 1 ? 'Deactivate' : 'Activate') . '</button></form></td></tr>';
+                . ((int) $template['is_active'] === 1 ? 'Active' : 'Disabled') . '</span></td>'
+                . '<td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="template-edit-' . $id . '">'
+                . $this->actionIcon('edit') . '<span>Edit</span></button>'
+                . '<form method="post" action="/admin/templates/toggle" class="management-action-form">' . $this->csrfInput()
+                . '<input type="hidden" name="template_id" value="' . $id . '"><button class="secondary management-action">'
+                . $this->actionIcon((int) $template['is_active'] === 1 ? 'disable' : 'enable')
+                . '<span>' . ((int) $template['is_active'] === 1 ? 'Disable' : 'Enable') . '</span></button></form></div></td></tr>';
             $dialogs .= '<dialog class="admin-modal" id="template-edit-' . $id . '" aria-labelledby="template-edit-title-' . $id . '">'
                 . '<div class="modal-header"><h2 id="template-edit-title-' . $id . '">Edit email template</h2>'
                 . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
@@ -730,7 +752,7 @@ final class Admin
             . '<label>Subject <input name="subject" maxlength="255" required></label>'
             . '<label>Format <select name="format"><option value="text">Plain text</option><option value="html">HTML</option></select></label>'
             . '<label class="body-field">Message <textarea name="body" maxlength="50000" rows="10" required></textarea></label>'
-            . '<div class="form-actions"><button>Send email</button><span class="form-help">The message is sent immediately and recorded in Email history. Its body is not stored.</span></div>'
+            . '<div class="form-actions"><button>Send email</button></div>'
             . '</form></section>';
         return $content;
     }
@@ -1520,6 +1542,21 @@ REGEX;
             . $paths . '</svg>';
     }
 
+    private function actionIcon(string $icon): string
+    {
+        $paths = match ($icon) {
+            'edit' => '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
+            'disable' => '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+            'enable' => '<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/>',
+            'test' => '<path d="M9 3h6M10 3v6.2L5.5 17a2.5 2.5 0 0 0 2.1 3.8h8.8a2.5 2.5 0 0 0 2.1-3.8L14 9.2V3"/><path d="M8 15h8"/>',
+            'revoke' => '<circle cx="8" cy="15" r="5"/><path d="m11.5 11.5 8-8L22 6l-2 2 1.5 1.5L19 12l-1.5-1.5-2 2"/>',
+            default => throw new \LogicException('Unknown management action icon.'),
+        };
+        return '<svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+            . ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            . $paths . '</svg>';
+    }
+
     private function page(string $title, string $content, bool $authenticated = false): void
     {
         $logout = $authenticated
@@ -1613,7 +1650,6 @@ textarea:focus{border-color:var(--accent);outline:2px solid rgba(0,126,73,.25)}
 .history-summary{margin:.8rem 0 .45rem;font-size:.75rem}
 .pagination{display:flex;justify-content:flex-end;gap:.55rem;margin-top:.7rem}
 .pagination a,.button-link{display:inline-flex;align-items:center;min-height:34px;padding:.4rem .65rem;border:1px solid var(--border-strong);border-radius:5px;text-decoration:none}
-.inline-form{display:inline-block}
 .template-body{min-height:170px}
 .template-form{align-items:start}
 .template-form input,.template-form select{height:42px}
@@ -1628,8 +1664,12 @@ select[multiple]{min-height:120px}
 .application-heading{display:flex;align-items:center;justify-content:space-between;gap:.8rem}
 .application-heading h3{margin:0 0 .25rem}
 .application-meta{margin:.5rem 0;color:var(--muted);font-size:.76rem}
-.application-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.7rem}
-.application-actions form,.application-actions button{margin:0}
+.application-actions{display:flex;align-items:center;justify-content:flex-end;gap:.45rem;flex-wrap:wrap;margin-top:.7rem}
+.application-actions form,.application-actions button,.management-action-form{margin:0}
+.management-actions{display:flex;align-items:center;justify-content:flex-end;gap:.45rem;flex-wrap:wrap}
+.management-action-form{display:inline-flex}
+.management-action{display:inline-flex;align-items:center;gap:.55rem;min-height:34px;margin:0;padding:.42rem .65rem;font-size:.73rem;line-height:1.2}
+.action-icon{width:14px;height:14px;flex:0 0 14px}
 .admin-modal{width:min(720px,calc(100% - 2rem));max-height:90vh;margin:auto;padding:0;overflow:hidden;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 24px 70px rgba(0,0,0,.5)}
 .admin-modal::backdrop{background:rgba(5,7,9,.72);backdrop-filter:blur(3px)}
 .modal-header{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.85rem 1.15rem;border-bottom:1px solid var(--border);background:var(--surface)}
@@ -1680,6 +1720,8 @@ summary{width:fit-content;color:#bac9d8;cursor:pointer;font-size:.77rem;font-wei
 details form{margin-top:.55rem}
 .table-wrap{overflow:auto;margin:.4rem 0 0;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft)}
 table{width:100%;border-collapse:collapse}
+.table-primary{display:block;color:var(--text);font-weight:600}
+.table-secondary{display:block;margin-top:.18rem;color:var(--muted);font-size:.7rem}
 td,th{padding:.68rem .72rem;border-bottom:1px solid #292e32;text-align:left;vertical-align:top}
 th{background:#1b1e21;color:#969da3;font-size:.64rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 td{color:#c5c9cd;font-size:.75rem}
@@ -1687,6 +1729,9 @@ tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:#1b1e21}
 td form{margin:0}
 td button{min-height:29px;margin:0;font-size:.68rem}
+.management-action{min-height:34px;font-size:.73rem}
+td.actions-cell{text-align:right;white-space:nowrap;min-width:170px}
+td .management-actions{flex-wrap:nowrap}
 code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;background:#15181b;color:#c0c9d1;padding:.12rem .38rem;font-size:.7rem}
 .success,.error,.notice{margin:.6rem 0;padding:.75rem .9rem;border:1px solid;border-radius:8px;font-size:.82rem}
 .success{border-color:#344b3d;background:#202a23;color:#a2c6ad}

@@ -72,7 +72,9 @@ final class Admin
                     '/admin/send-email' => 'Email sent successfully. The result is available in Email history.',
                     default => 'Changes saved.',
                 };
-                $_SESSION['flash'] = ['type' => 'success', 'message' => $message];
+                if ($path !== '/admin/tokens/create') {
+                    $_SESSION['flash'] = ['type' => 'success', 'message' => $message];
+                }
             } catch (Throwable $exception) {
                 error_log('[mail-api admin] ' . $exception::class . ': ' . $exception->getMessage());
                 $_SESSION['flash'] = ['type' => 'error', 'message' => $exception->getMessage()];
@@ -215,12 +217,15 @@ final class Admin
     private function notifications(): string
     {
         $content = '';
+        $modal = '';
         if (isset($_SESSION['new_token'])) {
-            $content .= '<div class="toast toast-notice" role="status" aria-live="polite" data-toast="persistent">'
-                . '<span class="toast-icon" aria-hidden="true">!</span><div class="toast-content">'
-                . '<strong>API token created</strong><code>' . Http::escape($_SESSION['new_token']) . '</code>'
-                . '<p>Copy it now and store it securely. This token is shown only once.</p></div>'
-                . '<button class="toast-dismiss" type="button" aria-label="Dismiss notification">×</button></div>';
+            $modal = '<dialog class="admin-modal token-created-modal" id="token-created"'
+                . ' aria-labelledby="token-created-title" data-open-on-load>'
+                . '<div class="modal-header"><h2 id="token-created-title">API token created</h2>'
+                . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
+                . '<div class="token-created-content"><p>Copy and store this token securely. It will only be shown once.</p>'
+                . '<code class="token-secret">' . Http::escape($_SESSION['new_token']) . '</code>'
+                . '<button type="button" class="secondary" data-close-modal>Close</button></div></dialog>';
             unset($_SESSION['new_token']);
         }
         if (isset($_SESSION['flash'])) {
@@ -234,7 +239,7 @@ final class Admin
             $content .= $this->toast($type, $title, (string) ($flash['message'] ?? ''));
             unset($_SESSION['flash']);
         }
-        return $content === '' ? '' : '<div class="toast-stack">' . $content . '</div>';
+        return $modal . ($content === '' ? '' : '<div class="toast-stack">' . $content . '</div>');
     }
 
     private function toast(string $type, string $title, string $message): string
@@ -1807,6 +1812,10 @@ select[multiple]{min-height:120px}
 .modal-close{width:34px;min-height:34px;margin:0;padding:0;border-color:var(--border-strong);background:#23272b;color:#c7cdd2;font-size:1.15rem}
 .admin-modal>form{max-height:calc(90vh - 3.7rem);margin:0;padding:1rem 1.15rem;overflow:auto}
 .admin-modal .form-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.token-created-modal{width:min(520px,calc(100% - 2rem))}
+.token-created-content{padding:1rem 1.15rem}
+.token-created-content p{margin:0 0 .75rem}
+.token-secret{display:block;margin:0 0 .9rem;padding:.75rem;user-select:all;font-size:.82rem}
 .detail-modal .detail-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem 1rem;max-height:calc(90vh - 3.7rem);margin:0;padding:1rem 1.15rem;overflow:auto}
 .detail-item{min-width:0;padding:.65rem .75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface-soft)}
 .detail-item-wide{grid-column:1/-1}
@@ -1922,6 +1931,7 @@ CSS;
             . ($authenticated ? '' : '<h1 class="page-title">' . Http::escape($title) . '</h1>')
             . $content . '</main>' . ($authenticated ? '</div>' : '') . '</div>'
             . '<script nonce="' . Http::escape($this->cspNonce) . '">(function(){'
+            . 'document.querySelectorAll("dialog[data-open-on-load]").forEach(function(dialog){dialog.showModal();});'
             . 'var menuToggle=document.querySelector(".menu-toggle");var sidebar=document.getElementById("admin-sidebar");'
             . 'if(menuToggle&&sidebar){var closeMenu=function(){sidebar.classList.remove("is-open");document.body.classList.remove("menu-open");'
             . 'menuToggle.setAttribute("aria-expanded","false");menuToggle.setAttribute("aria-label","Open navigation menu");};'

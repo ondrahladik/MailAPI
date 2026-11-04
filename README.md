@@ -17,10 +17,17 @@ Replace the URL with your MailAPI address and `YOUR_API_TOKEN` with an API token
 
 ## Requirements
 
-- PHP 8.0 or later with the `pdo_mysql` and `openssl` extensions
+- PHP 8.0 or later with the required extensions.
 - MariaDB
 - Composer
 - A PHP-capable web server
+
+On Debian/Ubuntu, install the PHP required extensions with:
+
+```sh
+sudo apt update
+sudo apt install php-cli php-common php-mysql
+```
 
 > **Note:** Composer is used to install dependencies but is not required on the hosting server if you upload the prepared `vendor/` directory.
 

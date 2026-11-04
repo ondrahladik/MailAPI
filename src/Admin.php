@@ -1905,7 +1905,7 @@ code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;backgroun
 @media(max-width:760px){.sidebar-docs{display:block}.sidebar-docs .sidebar-label{padding:.1rem .45rem .45rem}}
 @media(max-width:760px){.sidebar-note{display:flex;flex-direction:row;align-items:center;margin:.55rem .35rem 0;padding:.55rem .35rem 0}}
 @media(max-width:760px){.sidebar{padding:.55rem}.sidebar-group{margin-top:.4rem}.sidebar-label{padding:.1rem .45rem .3rem}.nav-link{min-height:34px;padding:.35rem .45rem}.sidebar-docs{display:block;margin-top:.4rem;padding:.45rem .35rem 0}.sidebar-docs .sidebar-label{padding:.1rem .45rem .3rem}.sidebar-docs nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.2rem}.sidebar-docs .nav-link{min-height:34px}.sidebar-note{margin-top:.45rem;padding-top:.45rem}}
-@media(max-width:760px){.shell{position:relative}.menu-toggle{display:inline-flex;margin-left:auto}.sidebar{display:none;position:absolute;z-index:20;top:calc(64px + .45rem);left:0;right:0;max-height:calc(100vh - 84px);overflow-y:auto;box-shadow:0 14px 36px rgba(0,0,0,.45)}.sidebar.is-open{display:block}.admin-layout>.sidebar{margin-top:0}}
+@media(max-width:760px){body.menu-open::before{position:fixed;z-index:19;inset:0;background:rgba(5,7,9,.58);backdrop-filter:blur(2px);content:""}.shell{position:relative}.menu-toggle{display:inline-flex;margin-left:auto}.menu-toggle[aria-expanded=true]{position:relative;z-index:21}.sidebar{display:none;position:absolute;z-index:20;top:calc(64px + .45rem);left:0;right:0;max-height:calc(100vh - 84px);overflow-y:auto;box-shadow:0 14px 36px rgba(0,0,0,.45)}.sidebar.is-open{display:block}.admin-layout>.sidebar{margin-top:0}}
 @media(max-width:540px){.form-grid{grid-template-columns:1fr}.form-actions,.send-email-form .body-field{grid-column:auto}.metric-card{grid-template-columns:1fr auto}.content-section{padding:.8rem}.section-heading{align-items:flex-start}.application-heading{align-items:flex-start}.send-email-form button{width:100%;min-height:42px}.docs-content pre{max-width:calc(100vw - 3.2rem);font-size:.7rem}.auth-page main{margin-top:8vh}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 CSS;
@@ -1921,10 +1921,11 @@ CSS;
             . $content . '</main>' . ($authenticated ? '</div>' : '') . '</div>'
             . '<script nonce="' . Http::escape($this->cspNonce) . '">(function(){'
             . 'var menuToggle=document.querySelector(".menu-toggle");var sidebar=document.getElementById("admin-sidebar");'
-            . 'if(menuToggle&&sidebar){var closeMenu=function(){sidebar.classList.remove("is-open");'
+            . 'if(menuToggle&&sidebar){var closeMenu=function(){sidebar.classList.remove("is-open");document.body.classList.remove("menu-open");'
             . 'menuToggle.setAttribute("aria-expanded","false");menuToggle.setAttribute("aria-label","Open navigation menu");};'
             . 'menuToggle.addEventListener("click",function(){var isOpen=menuToggle.getAttribute("aria-expanded")==="true";'
-            . 'sidebar.classList.toggle("is-open",!isOpen);menuToggle.setAttribute("aria-expanded",isOpen?"false":"true");'
+            . 'sidebar.classList.toggle("is-open",!isOpen);document.body.classList.toggle("menu-open",!isOpen);'
+            . 'menuToggle.setAttribute("aria-expanded",isOpen?"false":"true");'
             . 'menuToggle.setAttribute("aria-label",isOpen?"Open navigation menu":"Close navigation menu");});'
             . 'sidebar.addEventListener("click",function(event){if(event.target.closest("a")){closeMenu();}});'
             . 'document.addEventListener("click",function(event){if(sidebar.classList.contains("is-open")'

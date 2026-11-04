@@ -55,6 +55,14 @@ final class Admin
             Http::adminRedirect('/admin/login');
         }
 
+        if ($path === '/admin/overview/activity') {
+            if ($method !== 'GET') {
+                Http::jsonError(405, 'method_not_allowed', 'Use the GET method.', ['Allow' => 'GET']);
+            }
+            $logs = $this->recentEmailActivity(Database::connection());
+            Http::json(200, ['success' => true, 'data' => ['html' => $this->logTable($logs)]]);
+        }
+
         if ($method === 'POST') {
             $this->checkCsrf();
             try {
@@ -251,14 +259,7 @@ final class Admin
         $servers = $pdo->query('SELECT COUNT(*) AS total, COALESCE(SUM(is_active = 1), 0) AS active FROM smtp_servers')->fetch();
         $senders = $pdo->query('SELECT COUNT(*) AS total, COALESCE(SUM(is_active = 1), 0) AS active FROM senders')->fetch();
         $tokens = $pdo->query('SELECT COUNT(*) AS total FROM api_tokens WHERE revoked_at IS NULL')->fetch();
-        $logs = $pdo->query(
-            'SELECT l.*, a.name AS application_name, smtp.name AS smtp_server_name,
-                    template.slug AS template_slug
-             FROM email_logs l JOIN applications a ON a.id = l.application_id
-             LEFT JOIN smtp_servers smtp ON smtp.id = l.smtp_server_id
-             LEFT JOIN email_templates template ON template.id = l.template_id
-             ORDER BY l.created_at DESC LIMIT 8'
-        )->fetchAll();
+        $logs = $this->recentEmailActivity($pdo);
 
         $content = '<div class="metrics"><article class="metric-card"><span class="metric-label">Applications</span><strong>'
             . (int) $applications['total'] . '</strong><span class="metric-detail">' . (int) $applications['active'] . ' active</span></article>'
@@ -270,8 +271,24 @@ final class Admin
             . (int) $tokens['total'] . '</strong><span class="metric-detail">Not revoked</span></article></div>'
             . '<section class="content-section"><div class="section-heading"><div><h2>Recent email activity</h2>'
             . '<p>Latest delivery attempts across all applications.</p></div><a class="text-link" href="/admin/email-history">View history</a></div>'
-            . $this->logTable($logs) . '</section>';
+            . '<div id="overview-email-activity" data-refresh-url="/admin/overview/activity">'
+            . $this->logTable($logs) . '</div><p class="activity-refresh-status" id="overview-activity-status"'
+            . ' role="status" aria-live="polite">Live updates are enabled.</p></section>';
         return $content;
+    }
+
+    private function recentEmailActivity(PDO $pdo): array
+    {
+        return $pdo->query(
+            'SELECT l.*, a.name AS application_name, smtp.name AS smtp_server_name,
+                    template.slug AS template_slug
+             FROM email_logs l
+             JOIN applications a ON a.id = l.application_id
+             LEFT JOIN smtp_servers smtp ON smtp.id = l.smtp_server_id
+             LEFT JOIN email_templates template ON template.id = l.template_id
+             ORDER BY l.created_at DESC, l.id DESC
+             LIMIT 8'
+        )->fetchAll();
     }
 
     private function applicationsContent(PDO $pdo): string
@@ -1228,19 +1245,29 @@ REGEX;
             ]);
             $logId = (int) $pdo->lastInsertId();
 
-            try {
-                (new MailService())->send($recipient, $subject, $body, $format, $sender);
-            } catch (Throwable $exception) {
-                $pdo->prepare('UPDATE email_logs SET status = "failed", error_message = ? WHERE id = ?')
-                    ->execute([substr($exception->getMessage(), 0, 2000), $logId]);
-                throw new \RuntimeException(
-                    'Email delivery failed. Check the email history for details.',
-                    0,
-                    $exception
-                );
+            $sessionWasActive = session_status() === PHP_SESSION_ACTIVE;
+            if ($sessionWasActive) {
+                session_write_close();
             }
-            $pdo->prepare('UPDATE email_logs SET status = "sent", sent_at = UTC_TIMESTAMP() WHERE id = ?')
-                ->execute([$logId]);
+            try {
+                try {
+                    (new MailService())->send($recipient, $subject, $body, $format, $sender);
+                } catch (Throwable $exception) {
+                    $pdo->prepare('UPDATE email_logs SET status = "failed", error_message = ? WHERE id = ?')
+                        ->execute([substr($exception->getMessage(), 0, 2000), $logId]);
+                    throw new \RuntimeException(
+                        'Email delivery failed. Check the email history for details.',
+                        0,
+                        $exception
+                    );
+                }
+                $pdo->prepare('UPDATE email_logs SET status = "sent", sent_at = UTC_TIMESTAMP() WHERE id = ?')
+                    ->execute([$logId]);
+            } finally {
+                if ($sessionWasActive && !session_start()) {
+                    throw new \RuntimeException('Could not resume the administrator session after email delivery.');
+                }
+            }
             return;
         }
 
@@ -1770,6 +1797,8 @@ select[multiple]{min-height:120px}
 .detail-value{white-space:pre-wrap;overflow-wrap:anywhere}
 .empty-state{padding:1.25rem;border:1px dashed var(--border-strong);border-radius:6px;text-align:center}
 .text-link{color:var(--accent-link);font-size:.78rem}
+.activity-refresh-status{margin:.55rem 0 0;text-align:right;color:var(--muted);font-size:.68rem}
+.activity-refresh-status.is-error{color:var(--danger)}
 .docs-content h3{margin:1.4rem 0 .55rem}
 .docs-content ul,.docs-content ol{padding-left:1.35rem;color:#c5c9cd}
 .docs-content li{margin:.35rem 0}
@@ -1889,15 +1918,26 @@ CSS;
             . 'appSelect.addEventListener("change",function(){syncSenders();var option=appSelect.options[appSelect.selectedIndex];'
             . 'var recipient=document.getElementById("send-email-to");if(option&&recipient){recipient.value=option.dataset.defaultRecipient||"";}});'
             . 'syncSenders();}'
-            . 'document.querySelectorAll("[data-open-modal]").forEach(function(button){'
-            . 'var dialog=document.getElementById(button.dataset.openModal);'
-            . 'if(dialog){button.addEventListener("click",function(){dialog.showModal();});}});'
-            . 'document.querySelectorAll("dialog.admin-modal [data-close-modal]").forEach(function(button){'
-            . 'button.addEventListener("click",function(){button.closest("dialog").close();});});'
-            . 'document.querySelectorAll("dialog.admin-modal").forEach(function(dialog){'
-            . 'dialog.addEventListener("click",function(event){if(event.target!==dialog)return;'
-            . 'var bounds=dialog.getBoundingClientRect();'
-            . 'if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom){dialog.close();}});});'
+            . 'var activity=document.getElementById("overview-email-activity");'
+            . 'if(activity){var activityStatus=document.getElementById("overview-activity-status");var refreshing=false;'
+            . 'var refreshActivity=async function(){if(refreshing||document.hidden)return;refreshing=true;'
+            . 'try{var response=await fetch(activity.dataset.refreshUrl,{credentials:"same-origin",cache:"no-store",'
+            . 'headers:{Accept:"application/json"}});if(!response.ok){throw new Error("Overview refresh returned HTTP "+response.status);}'
+            . 'var result=await response.json();if(!result.success||!result.data||typeof result.data.html!=="string"){'
+            . 'throw new Error("Overview refresh returned an invalid response.");}'
+            . 'activity.innerHTML=result.data.html;activityStatus.textContent="Live updates are active.";'
+            . 'activityStatus.classList.remove("is-error");}catch(error){activityStatus.textContent="Live updates are unavailable; retrying.";'
+            . 'activityStatus.classList.add("is-error");}finally{refreshing=false;window.setTimeout(refreshActivity,2000);}};'
+            . 'window.setTimeout(refreshActivity,2000);document.addEventListener("visibilitychange",function(){'
+            . 'if(!document.hidden){window.setTimeout(refreshActivity,0);}});}'
+            . 'document.addEventListener("click",function(event){'
+            . 'var openButton=event.target.closest("[data-open-modal]");if(openButton){'
+            . 'var dialog=document.getElementById(openButton.dataset.openModal);if(dialog){dialog.showModal();return;}}'
+            . 'var closeButton=event.target.closest("dialog.admin-modal [data-close-modal]");'
+            . 'if(closeButton){closeButton.closest("dialog").close();return;}'
+            . 'var backdrop=event.target;if(backdrop instanceof HTMLDialogElement&&backdrop.classList.contains("admin-modal")){'
+            . 'var bounds=backdrop.getBoundingClientRect();if(event.clientX<bounds.left||event.clientX>bounds.right'
+            . '||event.clientY<bounds.top||event.clientY>bounds.bottom){backdrop.close();}}});'
             . '})();</script></body></html>';
         exit;
     }

@@ -9,8 +9,23 @@ try {
     require __DIR__ . '/src/bootstrap.php';
 
     $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
+    $basePath = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+    $basePath = $basePath === '.' ? '' : $basePath;
+    if (preg_match('~^(.*?)/(admin|send)(?:/|$)~', $path, $routeMatch) === 1) {
+        $basePath = $routeMatch[1];
+    }
+    Http::setBasePath($basePath);
+
+    if ($basePath !== '' && ($path === $basePath || str_starts_with($path, $basePath . '/'))) {
+        $path = substr($path, strlen($basePath)) ?: '/';
+    }
     $path = rtrim($path, '/') ?: '/';
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+    if ($path === '/' && $method === 'GET') {
+        Http::adminRedirect('/admin');
+    }
 
     if ($path === '/send') {
         if ($method !== 'POST') {

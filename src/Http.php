@@ -7,6 +7,31 @@ use RuntimeException;
 
 final class Http
 {
+    private static string $basePath = '';
+
+    public static function setBasePath(string $basePath): void
+    {
+        self::$basePath = $basePath === '/' ? '' : rtrim($basePath, '/');
+    }
+
+    public static function url(string $path): string
+    {
+        return self::$basePath . '/' . ltrim($path, '/');
+    }
+
+    public static function withBasePath(string $html): string
+    {
+        if (self::$basePath === '') {
+            return $html;
+        }
+
+        return preg_replace_callback(
+            '~(["\'])/(admin|assets|send)(?=[/?#"\'])~',
+            static fn (array $matches): string => $matches[1] . self::$basePath . '/' . $matches[2],
+            $html
+        ) ?? $html;
+    }
+
     public static function jsonError(int $status, string $code, string $message, array $headers = []): void
     {
         self::json($status, ['success' => false, 'error' => ['code' => $code, 'message' => $message]], $headers);
@@ -57,7 +82,7 @@ final class Http
 
     public static function adminRedirect(string $path): void
     {
-        header('Location: ' . $path, true, 303);
+        header('Location: ' . self::url($path), true, 303);
         exit;
     }
 }

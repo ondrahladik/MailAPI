@@ -903,7 +903,7 @@ PHP;
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         return '<section class="content-section docs-content"><h1 class="card-title">MailAPI documentation</h1>'
             . '<p>Send email through the SMTP server assigned to an application.</p>'
-            . '<h3>Endpoint</h3><pre><code>POST /send
+            . '<h3>Endpoint</h3><pre><code>POST ' . Http::escape(Http::url('/send')) . '
 Content-Type: application/json
 Authorization: Bearer YOUR_API_TOKEN</code></pre>'
             . '<h3>Request body</h3><pre><code>' . $this->highlightJson($requestJson) . '</code></pre>'
@@ -1909,7 +1909,9 @@ code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;backgroun
 @media(max-width:540px){.form-grid{grid-template-columns:1fr}.form-actions,.send-email-form .body-field{grid-column:auto}.metric-card{grid-template-columns:1fr auto}.content-section{padding:.8rem}.section-heading{align-items:flex-start}.application-heading{align-items:flex-start}.send-email-form button{width:100%;min-height:42px}.docs-content pre{max-width:calc(100vw - 3.2rem);font-size:.7rem}.auth-page main{margin-top:8vh}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 CSS;
-        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+        ob_start();
+        try {
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<link rel="icon" href="/assets/favicon.ico" type="image/x-icon"><title>'
             . Http::escape($title) . ' - MailAPI</title><style>' . $styles
             . '</style></head><body' . ($authenticated ? '' : ' class="auth-page"') . '><div class="shell"><header>'
@@ -1955,12 +1957,14 @@ CSS;
             . 'syncSenders();}'
             . 'var activity=document.getElementById("overview-email-activity");'
             . 'if(activity){var activityStatus=document.getElementById("overview-activity-status");var refreshing=false;'
-            . 'var refreshActivity=async function(){if(refreshing||document.hidden)return;refreshing=true;'
+            . 'var refreshActivity=async function(){if(refreshing||document.hidden)return;'
+            . 'if(activity.querySelector("dialog[open]")){window.setTimeout(refreshActivity,2000);return;}refreshing=true;'
             . 'try{var response=await fetch(activity.dataset.refreshUrl,{credentials:"same-origin",cache:"no-store",'
             . 'headers:{Accept:"application/json"}});if(!response.ok){throw new Error("Overview refresh returned HTTP "+response.status);}'
             . 'var result=await response.json();if(!result.success||!result.data||typeof result.data.html!=="string"){'
             . 'throw new Error("Overview refresh returned an invalid response.");}'
-            . 'activity.innerHTML=result.data.html;activityStatus.textContent="Live updates are active.";'
+            . 'if(!activity.querySelector("dialog[open]")){activity.innerHTML=result.data.html;}'
+            . 'activityStatus.textContent="Live updates are active.";'
             . 'activityStatus.classList.remove("is-error");}catch(error){activityStatus.textContent="Live updates are unavailable; retrying.";'
             . 'activityStatus.classList.add("is-error");}finally{refreshing=false;window.setTimeout(refreshActivity,2000);}};'
             . 'window.setTimeout(refreshActivity,2000);document.addEventListener("visibilitychange",function(){'
@@ -1973,7 +1977,16 @@ CSS;
             . 'var backdrop=event.target;if(backdrop instanceof HTMLDialogElement&&backdrop.classList.contains("admin-modal")){'
             . 'var bounds=backdrop.getBoundingClientRect();if(event.clientX<bounds.left||event.clientX>bounds.right'
             . '||event.clientY<bounds.top||event.clientY>bounds.bottom){backdrop.close();}}});'
-            . '})();</script></body></html>';
+                . '})();</script></body></html>';
+            $html = ob_get_clean();
+        } catch (\Throwable $exception) {
+            ob_end_clean();
+            throw $exception;
+        }
+        if (!is_string($html)) {
+            throw new \RuntimeException('The administration page could not be rendered.');
+        }
+        echo Http::withBasePath($html);
         exit;
     }
 }

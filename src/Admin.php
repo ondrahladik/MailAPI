@@ -1674,9 +1674,19 @@ REGEX;
         $logout = $authenticated
             ? '<form method="post" action="/admin/logout" class="logout">' . $this->csrfInput() . '<button class="secondary">Sign out</button></form>'
             : '';
+        $menuToggle = $authenticated
+            ? '<button class="menu-toggle secondary" type="button" aria-controls="admin-sidebar"'
+                . ' aria-expanded="false" aria-label="Open navigation menu">'
+                . '<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+                . ' stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+                . '<path d="M4 6h16M4 12h16M4 18h16"/></svg>'
+                . '<svg class="close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+                . ' stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+                . '<path d="m6 6 12 12M18 6 6 18"/></svg></button>'
+            : '';
         $navigation = '';
         if ($authenticated) {
-            $navigation = '<aside class="sidebar"><nav aria-label="Overview">'
+            $navigation = '<aside class="sidebar" id="admin-sidebar"><nav aria-label="Overview">'
                 . $this->navigationLink('/admin', 'Overview', 'overview') . '</nav>'
                 . '<div class="sidebar-group messaging-group"><span class="sidebar-label">Messaging</span><nav aria-label="Messaging">';
             foreach ([
@@ -1709,6 +1719,10 @@ body{min-height:100vh;margin:0;background:var(--bg);color:var(--text);font:14px/
 header{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:1.25rem;border-bottom:1px solid var(--border)}
 .brand{display:inline-flex;align-items:center;text-decoration:none}
 .brand-logo{display:block;width:min(196px,38vw);height:34px;object-fit:contain;object-position:left center}
+.menu-toggle{display:none;width:40px;height:40px;min-height:40px;margin:0;padding:.5rem;border-color:var(--border);background:var(--surface);color:var(--text)}
+.menu-toggle svg{width:19px;height:19px}
+.menu-toggle .close-icon,.menu-toggle[aria-expanded=true] .menu-icon{display:none}
+.menu-toggle[aria-expanded=true] .close-icon{display:block}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--success)}
 header form{margin:0}
 main{padding:.9rem 0 4rem}
@@ -1736,6 +1750,7 @@ p{color:var(--muted)}
 .sidebar nav{display:grid;gap:.2rem}
 .sidebar-group{margin-top:.85rem}
 .sidebar-group.messaging-group{margin-top:.75rem;padding-top:.7rem;border-top:1px solid var(--border)}
+.sidebar-group+.sidebar-group{padding-top:.7rem;border-top:1px solid var(--border)}
 .sidebar-docs{margin-top:1rem;padding-top:.7rem;border-top:1px solid var(--border)}
 .sidebar-docs .sidebar-label{padding-bottom:.35rem}
 .nav-link{display:flex;align-items:center;gap:.55rem;min-height:38px;padding:.5rem .65rem;border-radius:5px;color:#afb5bc;text-decoration:none;font-size:.82rem;font-weight:550;transition:background .15s ease,color .15s ease}
@@ -1889,6 +1904,8 @@ code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;backgroun
 @media(max-width:760px){.table-wrap table{width:max-content;min-width:100%}.table-wrap td{white-space:nowrap}}
 @media(max-width:760px){.sidebar-docs{display:block}.sidebar-docs .sidebar-label{padding:.1rem .45rem .45rem}}
 @media(max-width:760px){.sidebar-note{display:flex;flex-direction:row;align-items:center;margin:.55rem .35rem 0;padding:.55rem .35rem 0}}
+@media(max-width:760px){.sidebar{padding:.55rem}.sidebar-group{margin-top:.4rem}.sidebar-label{padding:.1rem .45rem .3rem}.nav-link{min-height:34px;padding:.35rem .45rem}.sidebar-docs{display:block;margin-top:.4rem;padding:.45rem .35rem 0}.sidebar-docs .sidebar-label{padding:.1rem .45rem .3rem}.sidebar-docs nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.2rem}.sidebar-docs .nav-link{min-height:34px}.sidebar-note{margin-top:.45rem;padding-top:.45rem}}
+@media(max-width:760px){.shell{position:relative}.menu-toggle{display:inline-flex;margin-left:auto}.sidebar{display:none;position:absolute;z-index:20;top:calc(64px + .45rem);left:0;right:0;max-height:calc(100vh - 84px);overflow-y:auto;box-shadow:0 14px 36px rgba(0,0,0,.45)}.sidebar.is-open{display:block}.admin-layout>.sidebar{margin-top:0}}
 @media(max-width:540px){.metrics,.form-grid{grid-template-columns:1fr}.form-actions,.send-email-form .body-field{grid-column:auto}.metric-card{grid-template-columns:1fr auto}.content-section{padding:.8rem}.section-heading{align-items:flex-start}.application-heading{align-items:flex-start}.send-email-form button{width:100%;min-height:42px}.docs-content pre{max-width:calc(100vw - 3.2rem);font-size:.7rem}.auth-page main{margin-top:8vh}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 CSS;
@@ -1897,11 +1914,24 @@ CSS;
             . Http::escape($title) . ' - MailAPI</title><style>' . $styles
             . '</style></head><body' . ($authenticated ? '' : ' class="auth-page"') . '><div class="shell"><header>'
             . '<a class="brand" href="/admin"><img class="brand-logo" src="/assets/logo.png" alt="MailAPI Administration"></a>'
+            . $menuToggle
             . $logout . '</header>'
             . ($authenticated ? '<div class="admin-layout">' . $navigation . '<main class="page-main">' : '<main>')
             . ($authenticated ? '' : '<h1 class="page-title">' . Http::escape($title) . '</h1>')
             . $content . '</main>' . ($authenticated ? '</div>' : '') . '</div>'
             . '<script nonce="' . Http::escape($this->cspNonce) . '">(function(){'
+            . 'var menuToggle=document.querySelector(".menu-toggle");var sidebar=document.getElementById("admin-sidebar");'
+            . 'if(menuToggle&&sidebar){var closeMenu=function(){sidebar.classList.remove("is-open");'
+            . 'menuToggle.setAttribute("aria-expanded","false");menuToggle.setAttribute("aria-label","Open navigation menu");};'
+            . 'menuToggle.addEventListener("click",function(){var isOpen=menuToggle.getAttribute("aria-expanded")==="true";'
+            . 'sidebar.classList.toggle("is-open",!isOpen);menuToggle.setAttribute("aria-expanded",isOpen?"false":"true");'
+            . 'menuToggle.setAttribute("aria-label",isOpen?"Open navigation menu":"Close navigation menu");});'
+            . 'sidebar.addEventListener("click",function(event){if(event.target.closest("a")){closeMenu();}});'
+            . 'document.addEventListener("click",function(event){if(sidebar.classList.contains("is-open")'
+            . '&&!sidebar.contains(event.target)&&!menuToggle.contains(event.target)){closeMenu();}});'
+            . 'document.addEventListener("keydown",function(event){if(event.key==="Escape"&&sidebar.classList.contains("is-open")){'
+            . 'closeMenu();menuToggle.focus();}});window.addEventListener("resize",function(){'
+            . 'if(window.matchMedia("(min-width: 761px)").matches){closeMenu();}});}'
             . 'document.querySelectorAll(".toast").forEach(function(toast){'
             . 'var timer;var remove=function(){toast.classList.add("is-leaving");window.setTimeout(function(){toast.remove();},200);};'
             . 'var schedule=function(){window.clearTimeout(timer);timer=window.setTimeout(remove,7000);};'

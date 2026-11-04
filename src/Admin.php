@@ -1698,7 +1698,8 @@ REGEX;
             $navigation .= '</nav></div><div class="sidebar-docs"><span class="sidebar-label">Docs</span><nav aria-label="Documentation">'
                 . $this->navigationLink('/admin/docs', 'API', 'api')
                 . $this->navigationLink('/admin/docs/admin', 'Admin', 'admin') . '</nav></div>'
-                . '<div class="sidebar-note">MailAPI</div></aside>';
+                . '<div class="sidebar-note"><a href="https://github.com/ondrahladik/MailAPI" target="_blank"'
+                . ' rel="noopener noreferrer">MailAPI on GitHub</a><span>MIT License</span></div></aside>';
         }
         $styles = <<<'CSS'
 :root{color-scheme:dark;--bg:#111315;--surface:#191c1f;--surface-soft:#15181b;--border:#2c3136;--border-strong:#3a4249;--text:#e5e8eb;--muted:#a0a7af;--accent:#007e49;--accent-strong:#007e49;--accent-hover:#00965a;--accent-link:#39c985;--danger:#d58b8f;--success:#90b7a0}
@@ -1745,7 +1746,9 @@ p{color:var(--muted)}
 .nav-link.current{border-left:2px solid var(--accent);background:rgba(0,126,73,.16);color:var(--accent-link);padding-left:calc(.65rem - 2px)}
 a:not(.brand):not(.nav-link){color:var(--accent-link);text-decoration-color:rgba(0,126,73,.65)}
 a:not(.brand):not(.nav-link):hover{color:#75dfa9;text-decoration-color:currentColor}
-.sidebar-note{display:flex;align-items:center;gap:.55rem;margin:.75rem .2rem 0;padding:.75rem .5rem 0;border-top:1px solid var(--border);color:#969da4;font-size:.68rem}
+.sidebar-note{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.75rem .2rem 0;padding:.75rem .5rem 0;border-top:1px solid var(--border);font-size:.68rem}
+.sidebar-note a{font-weight:600}
+.sidebar-note span{color:#969da4;font-size:.62rem}
 .content-section{scroll-margin-top:1rem;margin:0 0 1rem;padding:1.15rem;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
 .section-heading,.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}
 .section-heading{margin:0 0 1rem;padding:0 0 .85rem;border-bottom:1px solid var(--border)}
@@ -1885,6 +1888,7 @@ code{overflow-wrap:anywhere;border:1px solid #343a40;border-radius:4px;backgroun
 @media(max-width:760px){.shell{width:calc(100% - 1.5rem)}header{min-height:64px}.header-meta{display:none}.admin-layout{grid-template-columns:1fr}.sidebar{position:static;padding:.7rem}.admin-layout>.sidebar{margin-top:1rem}.sidebar-label{padding:.1rem .45rem .45rem}.sidebar nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem}.sidebar-group{margin-top:.55rem}.nav-link{min-width:0;min-height:40px;padding:.5rem;font-size:.78rem}.nav-link.current{padding-left:calc(.5rem - 2px)}.sidebar-docs{display:flex;align-items:center;gap:.75rem;margin-top:.55rem;padding:.55rem .35rem 0}.sidebar-docs .sidebar-label{flex:0 0 auto;padding:0}.sidebar-docs .nav-link{min-height:34px}.sidebar-note{display:none}.page-main{padding:.9rem 0 3rem}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}.metric-card{padding:.8rem}.metric-card strong{font-size:1.5rem}.hero{padding:1.3rem}}
 @media(max-width:760px){.table-wrap table{width:max-content;min-width:100%}.table-wrap td{white-space:nowrap}}
 @media(max-width:760px){.sidebar-docs{display:block}.sidebar-docs .sidebar-label{padding:.1rem .45rem .45rem}}
+@media(max-width:760px){.sidebar-note{display:flex;flex-direction:row;align-items:center;margin:.55rem .35rem 0;padding:.55rem .35rem 0}}
 @media(max-width:540px){.metrics,.form-grid{grid-template-columns:1fr}.form-actions,.send-email-form .body-field{grid-column:auto}.metric-card{grid-template-columns:1fr auto}.content-section{padding:.8rem}.section-heading{align-items:flex-start}.application-heading{align-items:flex-start}.send-email-form button{width:100%;min-height:42px}.docs-content pre{max-width:calc(100vw - 3.2rem);font-size:.7rem}.auth-page main{margin-top:8vh}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 CSS;

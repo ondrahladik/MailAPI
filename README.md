@@ -22,6 +22,8 @@ Replace the URL with your MailAPI address and `YOUR_API_TOKEN` with an API token
 - Composer
 - A PHP-capable web server
 
+> **Note:** Composer is used to install dependencies but is not required on the hosting server if you upload the prepared `vendor/` directory.
+
 ## Installation
 
 1. Upload the application to your server. Set the web root (document root) to the application directory containing `index.php`.

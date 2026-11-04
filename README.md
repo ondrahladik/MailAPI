@@ -13,6 +13,8 @@ curl https://mail.example.com/send \
   -d '{"to":"recipient@example.com","subject":"Hello","body":"Sent with MailAPI"}'
 ```
 
+Replace the URL with your MailAPI address and `YOUR_API_TOKEN` with an API token created for the application. This request sends a plain-text email; you can also provide `from` to select an allowed sender or use an application template with variables. Detailed API documentation, including request fields, template usage, and response examples, is available in the administration interface under **Docs → API**.
+
 ## Requirements
 
 - PHP 8.0 or later with the `pdo_mysql` and `openssl` extensions

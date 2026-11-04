@@ -542,7 +542,11 @@ final class Admin
             . '<div class="form-actions"><button>Create token</button><button type="button" class="secondary" data-close-modal>Cancel</button></div>'
             . '</form></dialog></section>'
             . '<section class="content-section"><div class="section-heading"><div><h2>Issued API tokens</h2>'
-            . '<p>The 100 most recently created tokens.</p></div></div><div class="table-wrap"><table>'
+            . '<p>The 100 most recently created tokens.</p></div></div>';
+        if (!$tokens) {
+            return $content . '<p class="empty-state">No API tokens have been created.</p></section>';
+        }
+        $content .= '<div class="table-wrap"><table>'
             . '<thead><tr><th>Token</th><th>Status</th><th></th></tr></thead><tbody>';
         $dialogs = '';
         foreach ($tokens as $token) {
@@ -568,9 +572,6 @@ final class Admin
                 'Status' => $token['revoked_at'] ? 'Revoked' : 'Active',
                 'Revoked at' => $token['revoked_at'] ?: '—',
             ]);
-        }
-        if (!$tokens) {
-            $content .= '<tr><td colspan="3">No tokens.</td></tr>';
         }
         return $content . '</tbody></table></div>' . $dialogs . '</section>';
     }
@@ -986,6 +987,11 @@ REGEX;
 
     private function logTable(array $logs, bool $showServer = false): string
     {
+        if (!$logs) {
+            return '<p class="empty-state">'
+                . ($showServer ? 'No email attempts match these filters.' : 'No emails have been sent yet.')
+                . '</p>';
+        }
         $columns = $showServer ? '<th>Recipient</th>' : '';
         $content = '<div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Application</th>'
             . $columns . '<th>Subject</th><th>Status</th><th></th></tr></thead><tbody>';
@@ -1020,11 +1026,6 @@ REGEX;
                 'Created (UTC)' => $log['created_at'],
                 'Sent (UTC)' => $log['sent_at'] ?: '—',
             ]);
-        }
-        if (!$logs) {
-            $content .= '<tr><td colspan="' . ($showServer ? '6' : '5') . '">'
-                . ($showServer ? 'No email attempts match these filters.' : 'No emails have been sent yet.')
-                . '</td></tr>';
         }
         return $content . '</tbody></table></div>' . $dialogs;
     }

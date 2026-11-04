@@ -4,7 +4,7 @@ MailAPI is a centralized PHP and MariaDB service for sending email through confi
 
 ![MailAPI administration screenshot](./assets/screenshot.jpeg)
 
-# Example
+## Example
 
 ```sh
 curl https://mail.example.com/send \
@@ -13,8 +13,6 @@ curl https://mail.example.com/send \
   -d '{"to":"recipient@example.com","subject":"Hello","body":"Sent with MailAPI"}'
 ```
 
-# Installation
-
 ## Requirements
 
 - PHP 8.0 or later with the `pdo_mysql` and `openssl` extensions
@@ -22,7 +20,7 @@ curl https://mail.example.com/send \
 - Composer
 - A PHP-capable web server
 
-## Setup
+## Installation
 
 1. Upload the application to your server. Set the web root (document root) to the application directory containing `index.php`.
 2. Install dependencies from the application directory:

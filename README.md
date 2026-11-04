@@ -1,6 +1,19 @@
-# Installation
+# MailAPI
 
 MailAPI is a centralized PHP and MariaDB service for sending email through configured SMTP servers. Applications use bearer tokens with the `POST /send` REST endpoint, while the admin interface manages SMTP servers, senders, applications, tokens, reusable email templates, searchable delivery history, and manual email.
+
+![MailAPI administration screenshot](./assets/screenshot.jpeg)
+
+# Example
+
+```sh
+curl https://mail.example.com/send \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"recipient@example.com","subject":"Hello","body":"Sent with MailAPI"}'
+```
+
+# Installation
 
 ## Requirements
 

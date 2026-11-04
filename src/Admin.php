@@ -252,8 +252,11 @@ final class Admin
         $senders = $pdo->query('SELECT COUNT(*) AS total, COALESCE(SUM(is_active = 1), 0) AS active FROM senders')->fetch();
         $tokens = $pdo->query('SELECT COUNT(*) AS total FROM api_tokens WHERE revoked_at IS NULL')->fetch();
         $logs = $pdo->query(
-            'SELECT l.created_at, l.sender, l.recipient, l.subject, l.status, a.name AS application_name
+            'SELECT l.*, a.name AS application_name, smtp.name AS smtp_server_name,
+                    template.slug AS template_slug
              FROM email_logs l JOIN applications a ON a.id = l.application_id
+             LEFT JOIN smtp_servers smtp ON smtp.id = l.smtp_server_id
+             LEFT JOIN email_templates template ON template.id = l.template_id
              ORDER BY l.created_at DESC LIMIT 8'
         )->fetchAll();
 
@@ -308,20 +311,17 @@ final class Admin
             return $content . '<p class="empty-state">No applications yet. Create one to get started.</p></section>';
         }
 
-        $content .= '<div class="table-wrap"><table><thead><tr><th>Application</th><th>SMTP server</th>'
-            . '<th>Default sender</th><th>Default recipient</th><th>Active tokens</th><th>Status</th><th></th></tr></thead><tbody>';
+        $content .= '<div class="table-wrap"><table><thead><tr><th>Application</th><th>Status</th><th></th></tr></thead><tbody>';
         $dialogs = '';
         foreach ($applications as $application) {
             $id = (int) $application['id'];
             $assignedIds = $senderIdsByApplication[$id] ?? [];
             $isActive = (int) $application['is_active'] === 1;
             $content .= '<tr><td><strong class="table-primary">' . Http::escape($application['name'])
-                . '</strong><small class="table-secondary">' . Http::escape($application['slug']) . '</small></td><td>'
-                . Http::escape($application['smtp_server_name'] ?: 'Not assigned') . '</td><td>'
-                . Http::escape($application['default_sender_email'] ?: 'Not set') . '</td><td>'
-                . Http::escape($application['default_to'] ?: '—') . '</td><td>' . (int) $application['active_tokens']
-                . '</td><td><span class="status-badge ' . ($isActive ? 'is-active' : 'is-disabled') . '">'
+                . '</strong></td><td><span class="status-badge ' . ($isActive ? 'is-active' : 'is-disabled') . '">'
                 . ($isActive ? 'Active' : 'Disabled') . '</span></td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="application-detail-' . $id . '">'
+                . $this->actionIcon('detail') . '<span>Detail</span></button>'
                 . '<button type="button" class="secondary management-action" data-open-modal="application-edit-' . $id . '">'
                 . $this->actionIcon('edit') . '<span>Edit</span></button>'
                 . '<form method="post" action="/admin/applications/toggle" class="management-action-form">' . $this->csrfInput()
@@ -329,7 +329,24 @@ final class Admin
                 . $this->actionIcon($isActive ? 'disable' : 'enable') . '<span>' . ($isActive ? 'Disable' : 'Enable')
                 . '</span></button></form></div></td></tr>';
 
-            $dialogs .= '<dialog class="admin-modal" id="application-edit-' . $id . '" aria-labelledby="application-edit-title-' . $id . '">'
+            $allowedSenders = [];
+            foreach ($senders as $sender) {
+                if (in_array((int) $sender['id'], $assignedIds, true)) {
+                    $allowedSenders[] = $sender['email'] . ((int) $sender['is_active'] === 1 ? '' : ' (disabled)');
+                }
+            }
+            $dialogs .= $this->detailDialog('application-detail-' . $id, 'Application details', [
+                'Name' => $application['name'],
+                'Slug' => $application['slug'],
+                'SMTP server' => $application['smtp_server_name'] ?: 'Not assigned',
+                'Default sender' => $application['default_sender_email'] ?: 'Not set',
+                'Default recipient' => $application['default_to'] ?: 'Not set',
+                'Allowed senders' => $allowedSenders ? implode("\n", $allowedSenders) : 'None',
+                'Active API tokens' => (string) $application['active_tokens'],
+                'Status' => $isActive ? 'Active' : 'Disabled',
+                'Created' => $application['created_at'],
+                'Updated' => $application['updated_at'],
+            ]) . '<dialog class="admin-modal" id="application-edit-' . $id . '" aria-labelledby="application-edit-title-' . $id . '">'
                 . '<div class="modal-header"><h2 id="application-edit-title-' . $id . '">Application settings</h2>'
                 . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
                 . '<form method="post" action="/admin/applications/update" class="form-grid modal-form">'
@@ -390,18 +407,15 @@ final class Admin
             return $content . '<p class="empty-state">No SMTP servers configured.</p></section>';
         }
 
-        $content .= '<div class="table-wrap"><table><thead><tr><th>SMTP server</th><th>Host</th><th>Encryption</th>'
-            . '<th>Username</th><th>Applications</th><th>Status</th><th></th></tr></thead><tbody>';
+        $content .= '<div class="table-wrap"><table><thead><tr><th>SMTP server</th><th>Status</th><th></th></tr></thead><tbody>';
         $dialogs = '';
         foreach ($servers as $server) {
             $isActive = (int) $server['is_active'] === 1;
-            $content .= '<tr><td><strong class="table-primary">' . Http::escape($server['name']) . '</strong></td><td>'
-                . Http::escape($server['host']) . ':' . (int) $server['port'] . '</td><td>'
-                . Http::escape(strtoupper($server['encryption'])) . '</td><td>'
-                . Http::escape($server['username']) . '</td><td>' . (int) $server['application_count']
-                . '</td><td><span class="status-badge '
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($server['name']) . '</strong></td><td><span class="status-badge '
                 . ($isActive ? 'is-active' : 'is-disabled') . '">' . ($isActive ? 'Active' : 'Disabled') . '</span>'
                 . '</td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="smtp-detail-' . (int) $server['id'] . '">'
+                . $this->actionIcon('detail') . '<span>Detail</span></button>'
                 . '<button type="button" class="secondary management-action" data-open-modal="smtp-edit-' . (int) $server['id'] . '">'
                 . $this->actionIcon('edit') . '<span>Edit</span></button>'
                 . '<form method="post" action="/admin/smtp-servers/test" class="management-action-form">' . $this->csrfInput()
@@ -411,7 +425,17 @@ final class Admin
                 . '<input type="hidden" name="server_id" value="' . (int) $server['id'] . '"><button class="secondary management-action">'
                 . $this->actionIcon($isActive ? 'disable' : 'enable') . '<span>' . ($isActive ? 'Disable' : 'Enable')
                 . '</span></button></form></div></td></tr>';
-            $dialogs .= '<dialog class="admin-modal" id="smtp-edit-' . (int) $server['id'] . '" aria-labelledby="smtp-edit-title-'
+            $dialogs .= $this->detailDialog('smtp-detail-' . (int) $server['id'], 'SMTP server details', [
+                'Name' => $server['name'],
+                'Host' => $server['host'],
+                'Port' => (string) $server['port'],
+                'Encryption' => strtoupper($server['encryption']),
+                'Username' => $server['username'],
+                'Applications' => (string) $server['application_count'],
+                'Status' => $isActive ? 'Active' : 'Disabled',
+                'Created' => $server['created_at'],
+                'Updated' => $server['updated_at'],
+            ]) . '<dialog class="admin-modal" id="smtp-edit-' . (int) $server['id'] . '" aria-labelledby="smtp-edit-title-'
                 . (int) $server['id'] . '"><div class="modal-header"><h2 id="smtp-edit-title-' . (int) $server['id']
                 . '">SMTP server settings</h2><button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
                 . $this->smtpServerForm($server) . '</dialog>';
@@ -422,7 +446,11 @@ final class Admin
     private function sendersContent(PDO $pdo): string
     {
         $senders = $pdo->query(
-            'SELECT s.*, (SELECT COUNT(*) FROM application_senders x WHERE x.sender_id = s.id) AS application_count
+            'SELECT s.*,
+                    (SELECT COUNT(*) FROM application_senders x WHERE x.sender_id = s.id) AS application_count,
+                    (SELECT GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR "\n")
+                     FROM application_senders x JOIN applications a ON a.id = x.application_id
+                     WHERE x.sender_id = s.id) AS application_names
              FROM senders s ORDER BY s.email'
         )->fetchAll();
         $content = '<section class="content-section"><div class="section-heading"><div><h1 class="card-title">Sender addresses</h1>'
@@ -438,23 +466,30 @@ final class Admin
             return $content . '<p class="empty-state">No sender addresses configured.</p></section>';
         }
 
-        $content .= '<div class="table-wrap"><table><thead><tr><th>Email</th><th>Display name</th>'
-            . '<th>Applications</th><th>Status</th><th></th></tr></thead><tbody>';
+        $content .= '<div class="table-wrap"><table><thead><tr><th>Sender address</th><th>Status</th><th></th></tr></thead><tbody>';
         $dialogs = '';
         foreach ($senders as $sender) {
             $isActive = (int) $sender['is_active'] === 1;
             $content .= '<tr><td><strong class="table-primary">' . Http::escape($sender['email'])
-                . '</strong></td><td>' . Http::escape($sender['sender_name'] ?: '—') . '</td><td>'
-                . (int) $sender['application_count'] . '</td><td><span class="status-badge '
+                . '</strong></td><td><span class="status-badge '
                 . ($isActive ? 'is-active' : 'is-disabled') . '">' . ($isActive ? 'Active' : 'Disabled') . '</span>'
                 . '</td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="sender-detail-' . (int) $sender['id'] . '">'
+                . $this->actionIcon('detail') . '<span>Detail</span></button>'
                 . '<button type="button" class="secondary management-action" data-open-modal="sender-edit-' . (int) $sender['id'] . '">'
                 . $this->actionIcon('edit') . '<span>Edit</span></button>'
                 . '<form method="post" action="/admin/senders/toggle" class="management-action-form">' . $this->csrfInput()
                 . '<input type="hidden" name="sender_id" value="' . (int) $sender['id'] . '"><button class="secondary management-action">'
                 . $this->actionIcon($isActive ? 'disable' : 'enable') . '<span>' . ($isActive ? 'Disable' : 'Enable')
                 . '</span></button></form></div></td></tr>';
-            $dialogs .= '<dialog class="admin-modal" id="sender-edit-' . (int) $sender['id'] . '" aria-labelledby="sender-edit-title-'
+            $dialogs .= $this->detailDialog('sender-detail-' . (int) $sender['id'], 'Sender details', [
+                'Email address' => $sender['email'],
+                'Display name' => $sender['sender_name'] ?: 'Not set',
+                'Assigned applications' => $sender['application_names'] ?: 'None',
+                'Status' => $isActive ? 'Active' : 'Disabled',
+                'Created' => $sender['created_at'],
+                'Updated' => $sender['updated_at'],
+            ]) . '<dialog class="admin-modal" id="sender-edit-' . (int) $sender['id'] . '" aria-labelledby="sender-edit-title-'
                 . (int) $sender['id'] . '"><div class="modal-header"><h2 id="sender-edit-title-' . (int) $sender['id']
                 . '">Sender address</h2><button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
                 . $this->senderForm($sender) . '</dialog>';
@@ -486,24 +521,36 @@ final class Admin
             . '</form></dialog></section>'
             . '<section class="content-section"><div class="section-heading"><div><h2>Issued API tokens</h2>'
             . '<p>The 100 most recently created tokens.</p></div></div><div class="table-wrap"><table>'
-            . '<thead><tr><th>Application</th><th>Name</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody>';
+            . '<thead><tr><th>Token</th><th>Status</th><th></th></tr></thead><tbody>';
+        $dialogs = '';
         foreach ($tokens as $token) {
-            $content .= '<tr><td>' . Http::escape($token['application_name']) . '</td><td>' . Http::escape($token['name'])
-                . '</td><td>' . Http::escape($token['created_at']) . '</td><td>'
-                . Http::escape($token['last_used_at'] ?: '—') . '</td><td><span class="status-badge '
+            $isActive = $token['revoked_at'] === null;
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($token['name'])
+                . '</strong><small class="table-secondary">' . Http::escape($token['application_name']) . '</small></td>'
+                . '<td><span class="status-badge '
                 . ($token['revoked_at'] ? 'is-disabled' : 'is-active') . '">'
-                . ($token['revoked_at'] ? 'Revoked' : 'Active') . '</span></td><td class="actions-cell"><div class="management-actions">';
+                . ($token['revoked_at'] ? 'Revoked' : 'Active') . '</span></td><td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="token-detail-' . (int) $token['id'] . '">'
+                . $this->actionIcon('detail') . '<span>Detail</span></button>';
             if (!$token['revoked_at']) {
                 $content .= '<form method="post" action="/admin/tokens/revoke" class="management-action-form">' . $this->csrfInput()
                     . '<input type="hidden" name="token_id" value="' . (int) $token['id'] . '">'
                     . '<button class="danger management-action">' . $this->actionIcon('revoke') . '<span>Revoke</span></button></form>';
             }
             $content .= '</div></td></tr>';
+            $dialogs .= $this->detailDialog('token-detail-' . (int) $token['id'], 'API token details', [
+                'Token name' => $token['name'],
+                'Application' => $token['application_name'],
+                'Created' => $token['created_at'],
+                'Last used' => $token['last_used_at'] ?: 'Never',
+                'Status' => $token['revoked_at'] ? 'Revoked' : 'Active',
+                'Revoked at' => $token['revoked_at'] ?: '—',
+            ]);
         }
         if (!$tokens) {
-            $content .= '<tr><td colspan="6">No tokens.</td></tr>';
+            $content .= '<tr><td colspan="3">No tokens.</td></tr>';
         }
-        return $content . '</tbody></table></div></section>';
+        return $content . '</tbody></table></div>' . $dialogs . '</section>';
     }
 
     private function emailHistoryContent(PDO $pdo): string
@@ -629,24 +676,36 @@ final class Admin
         if (!$templates) {
             return $content . '<p class="empty-state">No email templates have been created.</p></section>';
         }
-        $content .= '<div class="table-wrap"><table><thead><tr><th>Application</th><th>Name</th><th>Slug</th>'
-            . '<th>Format</th><th>Status</th><th></th></tr></thead><tbody>';
+        $content .= '<div class="table-wrap"><table><thead><tr><th>Template</th><th>Status</th><th></th></tr></thead><tbody>';
         $dialogs = '';
         foreach ($templates as $template) {
             $id = (int) $template['id'];
-            $content .= '<tr><td>' . Http::escape($template['application_name']) . '</td><td>'
-                . Http::escape($template['name']) . '</td><td><code>' . Http::escape($template['slug'])
-                . '</code></td><td>' . Http::escape($template['format']) . '</td><td><span class="status-badge '
+            $isActive = (int) $template['is_active'] === 1;
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($template['name'])
+                . '</strong><small class="table-secondary">' . Http::escape($template['application_name']) . '</small></td>'
+                . '<td><span class="status-badge '
                 . ((int) $template['is_active'] === 1 ? 'is-active' : 'is-disabled') . '">'
                 . ((int) $template['is_active'] === 1 ? 'Active' : 'Disabled') . '</span></td>'
                 . '<td class="actions-cell"><div class="management-actions">'
+                . '<button type="button" class="secondary management-action" data-open-modal="template-detail-' . $id . '">'
+                . $this->actionIcon('detail') . '<span>Detail</span></button>'
                 . '<button type="button" class="secondary management-action" data-open-modal="template-edit-' . $id . '">'
                 . $this->actionIcon('edit') . '<span>Edit</span></button>'
                 . '<form method="post" action="/admin/templates/toggle" class="management-action-form">' . $this->csrfInput()
                 . '<input type="hidden" name="template_id" value="' . $id . '"><button class="secondary management-action">'
                 . $this->actionIcon((int) $template['is_active'] === 1 ? 'disable' : 'enable')
                 . '<span>' . ((int) $template['is_active'] === 1 ? 'Disable' : 'Enable') . '</span></button></form></div></td></tr>';
-            $dialogs .= '<dialog class="admin-modal" id="template-edit-' . $id . '" aria-labelledby="template-edit-title-' . $id . '">'
+            $dialogs .= $this->detailDialog('template-detail-' . $id, 'Email template details', [
+                'Name' => $template['name'],
+                'Application' => $template['application_name'],
+                'API slug' => $template['slug'],
+                'Format' => $template['format'],
+                'Subject template' => $template['subject_template'],
+                'Message template' => $template['body_template'],
+                'Status' => $isActive ? 'Active' : 'Disabled',
+                'Created' => $template['created_at'],
+                'Updated' => $template['updated_at'],
+            ]) . '<dialog class="admin-modal" id="template-edit-' . $id . '" aria-labelledby="template-edit-title-' . $id . '">'
                 . '<div class="modal-header"><h2 id="template-edit-title-' . $id . '">Edit email template</h2>'
                 . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
                 . $this->emailTemplateForm($applications, $template) . '</dialog>';
@@ -905,11 +964,10 @@ REGEX;
 
     private function logTable(array $logs, bool $showServer = false): string
     {
-        $columns = $showServer
-            ? '<th>SMTP server</th><th>Template</th><th>Sender</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Error</th>'
-            : '<th>Sender</th><th>Recipient</th><th>Subject</th><th>Status</th>';
+        $columns = $showServer ? '<th>Recipient</th>' : '';
         $content = '<div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Application</th>'
-            . $columns . '</tr></thead><tbody>';
+            . $columns . '<th>Subject</th><th>Status</th><th></th></tr></thead><tbody>';
+        $dialogs = '';
         foreach ($logs as $log) {
             $statusClass = match ($log['status']) {
                 'sent' => 'is-active',
@@ -919,23 +977,51 @@ REGEX;
             $content .= '<tr><td>' . Http::escape($log['created_at']) . '</td><td>'
                 . Http::escape($log['application_name']) . '</td>';
             if ($showServer) {
-                $content .= '<td>' . Http::escape($log['smtp_server_name'] ?? 'Unavailable') . '</td>';
-                $content .= '<td>' . Http::escape($log['template_slug'] ?? '—') . '</td>';
+                $content .= '<td>' . Http::escape($log['recipient']) . '</td>';
             }
-            $content .= '<td>' . Http::escape($log['sender']) . '</td><td>' . Http::escape($log['recipient'])
-                . '</td><td>' . Http::escape($log['subject']) . '</td><td><span class="status-badge '
-                . $statusClass . '">' . Http::escape($log['status']) . '</span></td>';
-            if ($showServer) {
-                $content .= '<td>' . Http::escape($log['error_message'] ?? '') . '</td>';
-            }
-            $content .= '</tr>';
+            $content .= '<td>' . Http::escape($log['subject']) . '</td><td><span class="status-badge '
+                . $statusClass . '">' . Http::escape($log['status']) . '</span></td>'
+                . '<td class="actions-cell"><div class="management-actions"><button type="button" class="secondary management-action"'
+                . ' data-open-modal="email-log-detail-' . (int) $log['id'] . '">'
+                . $this->actionIcon('detail') . '<span>Detail</span></button></div></td></tr>';
+            $dialogs .= $this->detailDialog('email-log-detail-' . (int) $log['id'], 'Email details', [
+                'Log ID' => (string) $log['id'],
+                'Application' => $log['application_name'],
+                'SMTP server' => $log['smtp_server_name'] ?? 'Unavailable',
+                'Template' => $log['template_slug'] ?? '—',
+                'Sender' => $log['sender'],
+                'Recipient' => $log['recipient'],
+                'Subject' => $log['subject'],
+                'Format' => $log['format'],
+                'Status' => $log['status'],
+                'Error' => $log['error_message'] ?: '—',
+                'Created (UTC)' => $log['created_at'],
+                'Sent (UTC)' => $log['sent_at'] ?: '—',
+            ]);
         }
         if (!$logs) {
-            $content .= '<tr><td colspan="' . ($showServer ? '9' : '6') . '">'
+            $content .= '<tr><td colspan="' . ($showServer ? '6' : '5') . '">'
                 . ($showServer ? 'No email attempts match these filters.' : 'No emails have been sent yet.')
                 . '</td></tr>';
         }
-        return $content . '</tbody></table></div>';
+        return $content . '</tbody></table></div>' . $dialogs;
+    }
+
+    private function detailDialog(string $id, string $title, array $fields): string
+    {
+        $content = '<dialog class="admin-modal detail-modal" id="' . Http::escape($id)
+            . '" aria-labelledby="' . Http::escape($id) . '-title">'
+            . '<div class="modal-header"><h2 id="' . Http::escape($id) . '-title">' . Http::escape($title) . '</h2>'
+            . '<button type="button" class="modal-close" data-close-modal aria-label="Close dialog">×</button></div>'
+            . '<dl class="detail-list">';
+        foreach ($fields as $label => $value) {
+            $wide = in_array($label, ['Allowed senders', 'Assigned applications', 'Subject template', 'Message template', 'Error'], true)
+                ? ' detail-item-wide'
+                : '';
+            $content .= '<div class="detail-item' . $wide . '"><dt>' . Http::escape((string) $label) . '</dt><dd class="detail-value">'
+                . Http::escape((string) $value) . '</dd></div>';
+        }
+        return $content . '</dl></dialog>';
     }
 
     private function postAction(string $path): void
@@ -1544,6 +1630,7 @@ REGEX;
     {
         $paths = match ($icon) {
             'edit' => '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
+            'detail' => '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
             'disable' => '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
             'enable' => '<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/>',
             'test' => '<path d="M9 3h6M10 3v6.2L5.5 17a2.5 2.5 0 0 0 2.1 3.8h8.8a2.5 2.5 0 0 0 2.1-3.8L14 9.2V3"/><path d="M8 15h8"/>',
@@ -1675,6 +1762,12 @@ select[multiple]{min-height:120px}
 .modal-close{width:34px;min-height:34px;margin:0;padding:0;border-color:var(--border-strong);background:#23272b;color:#c7cdd2;font-size:1.15rem}
 .admin-modal>form{max-height:calc(90vh - 3.7rem);margin:0;padding:1rem 1.15rem;overflow:auto}
 .admin-modal .form-actions{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.detail-modal .detail-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem 1rem;max-height:calc(90vh - 3.7rem);margin:0;padding:1rem 1.15rem;overflow:auto}
+.detail-item{min-width:0;padding:.65rem .75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface-soft)}
+.detail-item-wide{grid-column:1/-1}
+.detail-item dt{margin-bottom:.25rem;color:var(--muted);font-size:.68rem;font-weight:650}
+.detail-item dd{margin:0;color:var(--text);font-size:.8rem}
+.detail-value{white-space:pre-wrap;overflow-wrap:anywhere}
 .empty-state{padding:1.25rem;border:1px dashed var(--border-strong);border-radius:6px;text-align:center}
 .text-link{color:var(--accent-link);font-size:.78rem}
 .docs-content h3{margin:1.4rem 0 .55rem}

@@ -4,6 +4,9 @@
   "type": "project",
   "require": {
     "php": ">=8.0",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*",
+    "ext-openssl": "*",
     "phpmailer/phpmailer": "^6.9"
   }
 }

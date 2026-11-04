@@ -551,8 +551,7 @@ final class Admin
         $dialogs = '';
         foreach ($tokens as $token) {
             $isActive = $token['revoked_at'] === null;
-            $content .= '<tr><td><strong class="table-primary">' . Http::escape($token['name'])
-                . '</strong><small class="table-secondary">' . Http::escape($token['application_name']) . '</small></td>'
+            $content .= '<tr><td><strong class="table-primary">' . Http::escape($token['name']) . '</strong></td>'
                 . '<td><span class="status-badge '
                 . ($token['revoked_at'] ? 'is-disabled' : 'is-active') . '">'
                 . ($token['revoked_at'] ? 'Revoked' : 'Active') . '</span></td><td class="actions-cell"><div class="management-actions">'
